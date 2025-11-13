@@ -1,9 +1,9 @@
-This is XeTeX, Version 3.141592653-2.6-0.999995 (TeX Live 2023) (preloaded format=xelatex 2025.5.20)  13 NOV 2025 15:09
+This is XeTeX, Version 3.141592653-2.6-0.999995 (TeX Live 2023) (preloaded format=xelatex 2025.5.20)  13 NOV 2025 14:53
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
-**moe_paradigm_rigorous_proofs.tex
-(./moe_paradigm_rigorous_proofs.tex
+**moe_paradigm_rigorous_proofs_soups.tex
+(./moe_paradigm_rigorous_proofs_soups.tex
 LaTeX2e <2022-11-01> patch level 1
 L3 programming layer <2023-02-22>
 (c:/texlive/2023/texmf-dist/tex/latex/ctex/ctexart.cls
@@ -556,8 +556,8 @@ LaTeX Font Info:    No file TUptm.fd. on input line 42.
 LaTeX Font Warning: Font shape `TU/ptm/m/n' undefined
 (Font)              using `TU/lmr/m/n' instead on input line 42.
 
-(./moe_paradigm_rigorous_proofs.aux)
-\openout1 = `moe_paradigm_rigorous_proofs.aux'.
+No file moe_paradigm_rigorous_proofs_soups.aux.
+\openout1 = `moe_paradigm_rigorous_proofs_soups.aux'.
 
 LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 42.
 LaTeX Font Info:    ... okay on input line 42.
@@ -635,7 +635,6 @@ LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `bold'
 (Font)                  OT1/cmss/bx/n --> TU/phv/b/n on input line 42.
 LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
 (Font)                  OT1/cmtt/m/n --> TU/pcr/b/n on input line 42.
-
 *geometry* driver: auto-detecting
 *geometry* detected driver: xetex
 *geometry* verbose mode - [ preamble ] result:
@@ -671,12 +670,13 @@ LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
 * (1in=72.27pt=25.4mm, 1cm=28.453pt)
 
 Package hyperref Info: Link coloring OFF on input line 42.
-(./moe_paradigm_rigorous_proofs.out) (./moe_paradigm_rigorous_proofs.out)
 \@outlinefile=\write3
-\openout3 = `moe_paradigm_rigorous_proofs.out'.
+\openout3 = `moe_paradigm_rigorous_proofs_soups.out'.
+
+
+Package hyperref Warning: Rerun to get /PageLabels entry.
 
 LaTeX Font Info:    Trying to load font information for U+msa on input line 45.
-
 
 (c:/texlive/2023/texmf-dist/tex/latex/amsfonts/umsa.fd
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
@@ -723,139 +723,132 @@ LaTeX Font Warning: Font shape `TU/ptm/b/n' undefined
 (Font)              using `TU/ptm/m/n' instead on input line 46.
 
 
+Underfull \hbox (badness 1810) in paragraph at lines 47--49
+[]\TU/ptm/m/n/10 This paper provides rigorous mathematical
+ []
+
+
 LaTeX Font Warning: Font shape `TU/ptm/m/it' undefined
 (Font)              using `TU/ptm/m/n' instead on input line 54.
 
 
 LaTeX Font Warning: Font shape `TU/ptm/b/it' undefined
-(Font)              using `TU/ptm/b/n' instead on input line 72.
+(Font)              using `TU/ptm/b/n' instead on input line 70.
 
 
-LaTeX Font Warning: Font shape `TU/SimSun(0)/b/it' undefined
-(Font)              using `TU/SimSun(0)/b/n' instead on input line 72.
+Underfull \hbox (badness 10000) in paragraph at lines 78--79
+[]\TU/ptm/m/it/10 Semantic preservation: $[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 x
+\OT1/cmr/m/n/10 ) \OMS/cmsy/m/n/10 ^^Y
+ []
 
 [1
 
 
 ]
-Underfull \hbox (badness 10000) in paragraph at lines 169--170
-[]\TU/SimSun(0)/m/it/10 攻 击 强 度 通 过 \TU/ptm/b/it/10 KL \TU/SimSun(0)/m/it/10 散 
-度 $\OML/cmm/m/it/10 ^^M \OT1/cmr/m/n/10 =
+Overfull \hbox (1.87558pt too wide) detected at line 106
+\OML/cmm/m/it/10 p[] \OT1/cmr/m/n/10 = [] \OMS/cmsy/m/n/10 ^^Y \OML/cmm/m/it/10
+ ^^M[] \OT1/cmr/m/n/10 + \OML/cmm/m/it/10 ^^N \OMS/cmsy/m/n/10 ^^A \OML/cmm/m/i
+t/10 ^^M[]\OT1/cmr/m/n/10 (1 \OMS/cmsy/m/n/10 ^^@ \OML/cmm/m/it/10 ^^M[]\OT1/cm
+r/m/n/10 ) + \OML/cmm/m/it/10 O\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 ^^N[]\OT1/cmr/
+m/n/10 )
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 174--175
-[]\TU/SimSun(0)/m/it/10 释 义 攻 击 改 变 输 入 分 布，|  使 得
+Overfull \hbox (91.11742pt too wide) detected at line 128
+\OT1/cmr/m/n/10 ^^A\OML/cmm/m/it/10 Z[] \OT1/cmr/m/n/10 = \OML/cmm/m/it/10 Z[] 
+\OMS/cmsy/m/n/10 ^^@ \OML/cmm/m/it/10 Z[] \OT1/cmr/m/n/10 = \OML/cmm/m/it/10 k[
+] \OMS/cmsy/m/n/10 ^^@ \OML/cmm/m/it/10 k[] \OMS/cmsy/m/n/10 / \OML/cmm/m/it/10
+ ^^M[] \OMS/cmsy/m/n/10 / \OML/cmm/m/it/10 ^^M
+ []
+
+
+Underfull \hbox (badness 1325) in paragraph at lines 168--169
+[][]\TU/SimSun(0)/b/n/10 定 理 \TU/ptm/b/it/10 3.1 (Neyman-Pearson Optimality in 
+MoE
  []
 
 
 LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 241.
+(Font)              using `TU/ptm/m/it' instead on input line 176.
 
 [2]
-Underfull \hbox (badness 1205) in paragraph at lines 333--334
-[][]\TU/SimSun(0)/b/n/10 定 理 \TU/ptm/b/it/10 4.4 (\TU/SimSun(0)/m/n/10 对 抗 鲁 棒 
-性 的 次 线 性 衰 减  |— —|  核 心
+Overfull \hbox (14.1112pt too wide) detected at line 237
+\OML/cmm/m/it/10 D[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 p; q\OT1/cmr/m/n/10 ) = [
+] \OML/cmm/m/it/10 f\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 ^^U\OT1/cmr/m/n/10 )\OML/
+cmm/m/it/10 ;  f\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 ^^U\OT1/cmr/m/n/10 ) = \OMS/c
+msy/m/n/10 ^^@ [] [] \OML/cmm/m/it/10 p\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 x\OT1/
+cmr/m/n/10 )[]\OML/cmm/m/it/10 q\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 x\OT1/cmr/m/n
+/10 )[]
  []
 
 
-Underfull \hbox (badness 1484) in paragraph at lines 333--334
-\TU/SimSun(0)/m/n/10 定 理\TU/ptm/b/it/10 ). []\TU/SimSun(0)/m/it/10 在 释 义 攻 击 $\
-OMS/cmsy/m/n/10 P \OT1/cmr/m/n/10 : \OML/cmm/m/it/10 x \OMS/cmsy/m/n/10 ! \OML/
-cmm/m/it/10 x[]$ \TU/SimSun(0)/m/it/10 下，|  满 足
+Overfull \hbox (27.91695pt too wide) detected at line 248
+\OMS/cmsy/m/n/10 j\OML/cmm/m/it/10 f[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 ^^U\OT1
+/cmr/m/n/10 ) \OMS/cmsy/m/n/10 ^^@ \OML/cmm/m/it/10 f[]\OT1/cmr/m/n/10 (\OML/cm
+m/m/it/10 ^^U\OT1/cmr/m/n/10 )\OMS/cmsy/m/n/10 j ^^T \OT1/cmr/m/n/10 (\OML/cmm/
+m/it/10 ^^N[] \OT1/cmr/m/n/10 + \OML/cmm/m/it/10 ^^N[]\OT1/cmr/m/n/10 ) \OMS/cm
+sy/m/n/10 ^^A [] [] ^^T \OT1/cmr/m/n/10 (\OML/cmm/m/it/10 ^^N[] \OT1/cmr/m/n/10
+ + \OML/cmm/m/it/10 ^^N[]\OT1/cmr/m/n/10 )[]
  []
 
 
 LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 368.
+(Font)              using `TU/ptm/m/it' instead on input line 268.
 
 [3]
-Overfull \hbox (5.27489pt too wide) detected at line 390
-[][][][]
+Overfull \hbox (25.15904pt too wide) detected at line 297
+[] \OMS/cmsy/m/n/10 ^^T \OML/cmm/m/it/10 C[] \OMS/cmsy/m/n/10 ^^A \OML/cmm/m/it
+/10 C[][][]
+ []
+
+
+Overfull \hbox (5.27489pt too wide) detected at line 300
+[]
+ []
+
+
+Underfull \hbox (badness 6461) in paragraph at lines 310--311
+[][]\TU/SimSun(0)/b/n/10 定 理 \TU/ptm/b/it/10 4.6 (Decay Rate Comparison of Two
  []
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 439.
+(hyperref)                removing `math shift' on input line 334.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 439.
-
-
-Underfull \hbox (badness 5726) in paragraph at lines 469--470
-[]\TU/SimSun(0)/m/it/10 攻 击 策 略 为 编 辑 距 离 约 束 的 释 义 攻 击
- []
+(hyperref)                removing `math shift' on input line 334.
 
 
 LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 497.
+(Font)              using `TU/ptm/m/it' instead on input line 355.
 
 [4]
-
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 569.
-
-
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `subscript' on input line 569.
+Underfull \hbox (badness 2865) in paragraph at lines 355--356
+[]\TU/ptm/b/it/10 Attack strategy is edit-distance-constrained
+ []
 
 
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 569.
-
-
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 597.
-
-
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 597.
+Overfull \hbox (7.81096pt too wide) detected at line 430
+\OML/cmm/m/it/10 D[] \OMS/cmsy/m/n/10 ^^U \OT1/cmr/m/n/10 0\OML/cmm/m/it/10 :\O
+T1/cmr/m/n/10 1 \OMS/cmsy/m/n/10 ^^@ \OT1/cmr/m/n/10 1\OML/cmm/m/it/10 :\OT1/cm
+r/m/n/10 5[] = 0\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 1 \OMS/cmsy/m/n/10 ^^@ \OT1/c
+mr/m/n/10 0\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 082 = 0\OML/cmm/m/it/10 :\OT1/cmr/
+m/n/10 018[]
+ []
 
 
 LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 602.
+(Font)              using `TU/ptm/m/it' instead on input line 433.
 
 [5]
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 619.
+(hyperref)                removing `math shift' on input line 440.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 619.
+(hyperref)                removing `subscript' on input line 440.
 
 
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 646.
-
-
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `\gamma' on input line 646.
-
-
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 646.
-
-
-LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 678.
-
-[6] (./moe_paradigm_rigorous_proofs.aux)
-
-LaTeX Font Warning: Some font shapes were not available, defaults substituted.
-
-Package rerunfilecheck Info: File `moe_paradigm_rigorous_proofs.out' has not ch
-anged.
-(rerunfilecheck)             Checksum: E4A6E868818731E3E54CE6D208AA2DAF;3648.
- ) 
-Here is how much of TeX's memory you used:
- 17039 strings out of 476683
- 382376 string characters out of 5807575
- 1883012 words of memory out of 5000000
- 37033 multiletter control sequences out of 15000+600000
- 522426 words of font info for 98 fonts, out of 8000000 for 9000
- 1348 hyphenation exceptions out of 8191
- 89i,18n,97p,396b,542s stack positions out of 10000i,1000n,20000p,200000b,200000s
-
-Output written on moe_paradigm_rigorous_proofs.pdf (6 pages).
+Package hyperref Warning: Token not allowed in a 

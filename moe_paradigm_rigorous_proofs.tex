@@ -1,17 +1,19 @@
-\documentclass[11pt,a4paper]{ctexart}
+\documentclass[10pt,twocolumn,letterpaper]{ctexart}
 
+\usepackage{usenix2020_SOUPS}
 \usepackage{amsmath}
 \usepackage{amssymb}
 \usepackage{amsthm}
-\usepackage{geometry}
 \usepackage{graphicx}
+\usepackage{url}
 \usepackage{hyperref}
-\usepackage{booktabs}
-\usepackage{array}
-\usepackage{listings}
 \usepackage{xcolor}
+\usepackage{booktabs}
 
-\geometry{margin=2.5cm}
+% 定义USENIX模板需要的命令
+\providecommand{\alignauthor}{}
+\providecommand{\affaddr}[1]{#1}
+\providecommand{\email}[1]{\texttt{#1}}
 
 % Theorem environments
 \newtheorem{theorem}{定理}[section]
@@ -30,9 +32,12 @@
 
 \title{范式之争的严格数学证明：\\MoE专家激活水印的Signal-Attack Decoupling理论}
 
-\author{yunhao}
-
-\date{}
+\author{
+\alignauthor
+yunhao\\
+\affaddr{跨学科研究院}\\
+\email{yunhao@example.edu}
+}
 
 \begin{document}
 
@@ -48,7 +53,9 @@
 
 \begin{definition}[水印系统的形式化]
 一个水印系统 $\mathcal{W}$ 由以下三元组定义：
-$$\mathcal{W} = (\mathcal{M}, \mathcal{S}, \mathcal{D})$$
+\begin{equation}
+\mathcal{W} = (\mathcal{M}, \mathcal{S}, \mathcal{D})
+\end{equation}
 其中：
 \begin{itemize}
 \item $\mathcal{M}$：宿主模型空间（可以是稠密模型或MoE模型）
@@ -63,7 +70,9 @@ $$\mathcal{W} = (\mathcal{M}, \mathcal{S}, \mathcal{D})$$
 
 \begin{definition}[攻击向量空间的解耦性]
 令 $\mathcal{A}$ 为对手的攻击空间。称一个水印系统为\textbf{信号-攻击解耦的}（Signal-Attack Decoupled），当且仅当：
-$$\mathcal{S} \cap \mathcal{A}_{\text{direct}} = \emptyset$$
+\begin{equation}
+\mathcal{S} \cap \mathcal{A}_{\text{direct}} = \emptyset
+\end{equation}
 其中 $\mathcal{A}_{\text{direct}}$ 是对手能直接操纵的空间。
 \end{definition}
 
@@ -75,7 +84,9 @@ $$\mathcal{S} \cap \mathcal{A}_{\text{direct}} = \emptyset$$
 \end{itemize}
 
 其\textbf{强度} $\gamma$ 定义为：
-$$\gamma(\mathcal{P}) = \KL{D(X')}{D(X)}$$
+\begin{equation}
+\gamma(\mathcal{P}) = \KL{D(X')}{D(X)}
+\end{equation}
 其中 $D(X')$ 是被攻击后的输入分布。
 \end{definition}
 
@@ -95,17 +106,31 @@ $$\gamma(\mathcal{P}) = \KL{D(X')}{D(X)}$$
 则在无水印假设 $H_0$ 下，$k \sim \text{Binomial}(N, \gamma_G)$。
 
 检测统计量（z-score）为：
-$$Z_{\text{KGW}} = \frac{k - N\gamma_G}{\sqrt{N\gamma_G(1-\gamma_G)}} \approx \mathcal{N}(0, 1)$$
+\begin{equation}
+Z_{\text{KGW}} = \frac{k - N\gamma_G}{\sqrt{N\gamma_G(1-\gamma_G)}} \approx \mathcal{N}(0, 1)
+\end{equation}
 
 在有水印假设 $H_1$ 下，水印偏置 $\delta$ 改变了绿名单词元的采样概率：
-$$p_{\text{green}}^{\text{wm}} = \frac{\gamma_G e^\delta}{\gamma_G e^\delta + (1-\gamma_G)} \approx \gamma_G + \delta \cdot \gamma_G (1-\gamma_G) + O(\delta^2)$$
+\begin{equation}
+\begin{split}
+p_{\text{green}}^{\text{wm}} &= \frac{\gamma_G e^\delta}{\gamma_G e^\delta + (1-\gamma_G)} \\
+&\approx \gamma_G + \delta \cdot \gamma_G (1-\gamma_G) + O(\delta^2)
+\end{split}
+\end{equation}
 
 因此 $k$ 在 $H_1$ 下的期望为：
-$$\Expect_{H_1}[k] = N[\gamma_G + \Delta\gamma(\delta)]$$
+\begin{equation}
+\Expect_{H_1}[k] = N[\gamma_G + \Delta\gamma(\delta)]
+\end{equation}
 其中 $\Delta\gamma(\delta) = \delta \cdot \gamma_G(1-\gamma_G)$ 是由偏置 $\delta$ 引起的激活概率增量。
 
 水印信号强度（在 $H_1$ 下的z-score）：
-$$Z_{\text{KGW}}^{H_1} = \frac{\Expect[k] - N\gamma_G}{\sqrt{N\gamma_G(1-\gamma_G)}} = \sqrt{N} \cdot \delta \cdot \sqrt{\gamma_G(1-\gamma_G)^2}$$
+\begin{equation}
+\begin{split}
+Z_{\text{KGW}}^{H_1} &= \frac{\Expect[k] - N\gamma_G}{\sqrt{N\gamma_G(1-\gamma_G)}} \\
+&= \sqrt{N} \cdot \delta \cdot \sqrt{\gamma_G(1-\gamma_G)^2}
+\end{split}
+\end{equation}
 
 \textbf{关键性质}：$Z_{\text{KGW}}^{H_1} \propto \sqrt{N} \cdot \delta$（仅与偏置强度有关，与文本内容无关）
 \end{theorem}
@@ -120,12 +145,20 @@ $$Z_{\text{KGW}}^{H_1} = \frac{\Expect[k] - N\gamma_G}{\sqrt{N\gamma_G(1-\gamma_
 
 \begin{corollary}
 在释义攻击下，水印信号的衰减为：
-$$\Delta Z_{\text{KGW}} = Z_{\text{KGW}}^{H_1, \text{original}} - Z_{\text{KGW}}^{H_1, \text{attacked}} = k_{\text{original}} - k_{\text{after\_attack}} \propto \gamma_{\text{attack}} \propto \gamma$$
+\begin{equation}
+\begin{split}
+\Delta Z_{\text{KGW}} &= Z_{\text{KGW}}^{H_1, \text{original}} - Z_{\text{KGW}}^{H_1, \text{attacked}} \\
+&= k_{\text{original}} - k_{\text{after\_attack}} \\
+&\propto \gamma_{\text{attack}} \propto \gamma
+\end{split}
+\end{equation}
 \end{corollary}
 
 \begin{theorem}[Token-Logit范式下的线性衰减]
 对KGW范式，存在常数 $C_{\text{linear}}$ 使得：
-$$\boxed{\Expect[\Delta Z_{\text{KGW}}(\gamma)] = C_{\text{linear}} \cdot \gamma}$$
+\begin{equation}
+\boxed{\Expect[\Delta Z_{\text{KGW}}(\gamma)] = C_{\text{linear}} \cdot \gamma}
+\end{equation}
 
 即z-score信号损失与攻击强度 $\gamma$ 成\textbf{线性关系}。
 
@@ -150,7 +183,10 @@ $$\boxed{\Expect[\Delta Z_{\text{KGW}}(\gamma)] = C_{\text{linear}} \cdot \gamma
 \begin{corollary}
 在z-score检测中，存在检测阈值 $\tau_{\text{detect}}$（通常 $\approx 4$）。
 
-当攻击强度 $\gamma > \gamma_{\text{crit}} := \frac{\tau_{\text{detect}}}{C_{\text{linear}} \cdot \Expect[Z_0]}$ 时，水印检测失效。
+当攻击强度 $\gamma > \gamma_{\text{crit}}$ 时，水印检测失效，其中：
+\begin{equation}
+\gamma_{\text{crit}} := \frac{\tau_{\text{detect}}}{C_{\text{linear}} \cdot \Expect[Z_0]}
+\end{equation}
 
 这意味着对于中等强度的释义攻击（$\gamma \sim 0.01-0.05$），KGW范式无法保证可检测性。
 \end{corollary}
@@ -165,20 +201,34 @@ $$\boxed{\Expect[\Delta Z_{\text{KGW}}(\gamma)] = C_{\text{linear}} \cdot \gamma
 其中 $S_i$ 是第 $i$ 次推理的激活专家集合，满足 $\KL{p_1}{p_0} = \epsilon$。
 
 根据Neyman-Pearson引理，最优检验器为似然比检验（LLR）：
-$$\Lambda_n = \sum_{i=1}^n \log \frac{p_1(S_i)}{p_0(S_i)}$$
+\begin{equation}
+\Lambda_n = \sum_{i=1}^n \log \frac{p_1(S_i)}{p_0(S_i)}
+\end{equation}
 
 判决规则：$\Lambda_n > \tau_\alpha \Rightarrow$ 判为 $H_1$（有水印）
 \end{theorem}
 
 \begin{theorem}[Chernoff-Stein定理的精确形式]
 对于n个独立样本的LLR检验，错误率指数衰减：
-$$\log P_e(n) = -n \cdot \Dstar(p_0, p_1) + o(n)$$
+\begin{equation}
+\log P_e(n) = -n \cdot \Dstar(p_0, p_1) + o(n)
+\end{equation}
 
 其中Chernoff信息定义为：
-$$\Dstar(p_0, p_1) = -\min_{0 \leq \lambda \leq 1} \log \Expect_{e \sim p_0}\left[\left(\frac{p_1(e)}{p_0(e)}\right)^\lambda\right]$$
+\begin{equation}
+\begin{split}
+\Dstar(p_0, p_1) &= -\min_{0 \leq \lambda \leq 1} \log \\
+&\quad \Expect_{e \sim p_0}\left[\left(\frac{p_1(e)}{p_0(e)}\right)^\lambda\right]
+\end{split}
+\end{equation}
 
 等价形式：
-$$\Dstar(p_0, p_1) = \max_{0 \leq \lambda \leq 1} \left[-\log \sum_{e} p_0(e)^{1-\lambda} p_1(e)^\lambda\right]$$
+\begin{equation}
+\begin{split}
+\Dstar(p_0, p_1) &= \max_{0 \leq \lambda \leq 1} \\
+&\quad \left[-\log \sum_{e} p_0(e)^{1-\lambda} p_1(e)^\lambda\right]
+\end{split}
+\end{equation}
 
 \textbf{物理意义}：Chernoff信息衡量两个分布通过假设检验可区分的"难度倒数"。
 \end{theorem}
@@ -189,10 +239,14 @@ $$\Dstar(p_0, p_1) = \max_{0 \leq \lambda \leq 1} \left[-\log \sum_{e} p_0(e)^{1
 水印嵌入通过修改gating网络的logit实现。原始logit为 $\ell_0(x)$，修改后为 $\ell_1(x) = \ell_0(x) + \Delta \ell(x)$。
 
 这导致激活分布从 $p_0(e|x)$ 变为 $p_1(e|x)$，满足：
-$$\KL{p_1}{p_0} = \epsilon$$
+\begin{equation}
+\KL{p_1}{p_0} = \epsilon
+\end{equation}
 
 通过Top-k softmax的性质，可以证明：
-$$\epsilon \approx \frac{1}{2}\|\Delta \ell\|_2^2$$
+\begin{equation}
+\epsilon \approx \frac{1}{2}\|\Delta \ell\|_2^2
+\end{equation}
 
 \textbf{关键性质}：$\epsilon$ 仅取决于logit修改的大小，\textbf{而非修改发生在哪个层}。
 \end{definition}
@@ -203,15 +257,21 @@ $$\epsilon \approx \frac{1}{2}\|\Delta \ell\|_2^2$$
 
 \begin{theorem}[Pinsker不等式]
 对任意两个概率分布 $p, q$：
-$$\|p - q\|_{\text{TV}}^2 \leq \frac{1}{2} \KL{p}{q}$$
+\begin{equation}
+\|p - q\|_{\text{TV}}^2 \leq \frac{1}{2} \KL{p}{q}
+\end{equation}
 
 其中总变差距离定义为：
-$$\|p - q\|_{\text{TV}} := \frac{1}{2}\sum_x |p(x) - q(x)|$$
+\begin{equation}
+\|p - q\|_{\text{TV}} := \frac{1}{2}\sum_x |p(x) - q(x)|
+\end{equation}
 \end{theorem}
 
 \begin{corollary}
 若 $\KL{q}{p} = \gamma$，则
-$$\|q - p\|_{\text{TV}} \leq \sqrt{\frac{\gamma}{2}}$$
+\begin{equation}
+\|q - p\|_{\text{TV}} \leq \sqrt{\frac{\gamma}{2}}
+\end{equation}
 \end{corollary}
 
 \subsection{Chernoff信息的稳定性引理}
@@ -224,27 +284,45 @@ $$\|q - p\|_{\text{TV}} \leq \sqrt{\frac{\gamma}{2}}$$
 \end{itemize}
 
 则存在常数 $C_{\text{stability}}$ 使得：
-$$|\Dstar(p', q') - \Dstar(p, q)| \leq C_{\text{stability}} \left(\delta_p + \delta_q\right) \sqrt{\Dstar(p, q)}$$
+\begin{equation}
+|\Dstar(p', q') - \Dstar(p, q)| \leq C_{\text{stability}} \left(\delta_p + \delta_q\right) \sqrt{\Dstar(p, q)}
+\end{equation}
 
 \textbf{严格证明}：
 
 \textbf{步骤1：Chernoff信息定义}
-$$\Dstar(p,q) = \max_{0 \leq \lambda \leq 1} f(\lambda), \quad f(\lambda) = -\log \sum_x p(x)^{1-\lambda} q(x)^\lambda$$
+\begin{equation}
+\begin{split}
+\Dstar(p,q) &= \max_{0 \leq \lambda \leq 1} f(\lambda), \\
+f(\lambda) &= -\log \sum_x p(x)^{1-\lambda} q(x)^\lambda
+\end{split}
+\end{equation}
 
 \textbf{步骤2：梯度分析}
 $f(\lambda)$ 对分布参数 $p(x)$ 的偏导数为：
-$$\frac{\partial f}{\partial p(x)} = -\frac{(1-\lambda)p(x)^{-\lambda} q(x)^\lambda}{\sum_x p(x)^{1-\lambda} q(x)^\lambda}$$
+\begin{equation}
+\frac{\partial f}{\partial p(x)} = -\frac{(1-\lambda)p(x)^{-\lambda} q(x)^\lambda}{\sum_x p(x)^{1-\lambda} q(x)^\lambda}
+\end{equation}
 
 由Hölder不等式，梯度范数满足：
-$$|\nabla_p f| \leq \sqrt{f(\lambda)}$$
+\begin{equation}
+|\nabla_p f| \leq \sqrt{f(\lambda)}
+\end{equation}
 
 \textbf{步骤3：Lipschitz界}
 对于扰动后的分布 $p', q'$，有：
-$$|f_{p',q'}(\lambda) - f_{p,q}(\lambda)| \leq (\delta_p + \delta_q) \cdot \sup_x \left|\frac{\partial f}{\partial p(x)}\right| \leq (\delta_p + \delta_q) \sqrt{f(\lambda)}$$
+\begin{equation}
+\begin{split}
+|f_{p',q'}(\lambda) - f_{p,q}(\lambda)| &\leq (\delta_p + \delta_q) \cdot \sup_x \left|\frac{\partial f}{\partial p(x)}\right| \\
+&\leq (\delta_p + \delta_q) \sqrt{f(\lambda)}
+\end{split}
+\end{equation}
 
 \textbf{步骤4：取最大值}
 由于 $\Dstar(p,q) = \max_\lambda f(\lambda)$，稳定性界为：
-$$|\Dstar(p', q') - \Dstar(p, q)| \leq (\delta_p + \delta_q) \sqrt{\Dstar(p, q)}$$
+\begin{equation}
+|\Dstar(p', q') - \Dstar(p, q)| \leq (\delta_p + \delta_q) \sqrt{\Dstar(p, q)}
+\end{equation}
 
 因此 $C_{\text{stability}} \approx 1$。在高维分布中，$C_{\text{stability}}$ 可能略大于1，需通过实验标定。\qed
 \end{lemma}
@@ -257,22 +335,30 @@ $$|\Dstar(p', q') - \Dstar(p, q)| \leq (\delta_p + \delta_q) \sqrt{\Dstar(p, q)}
 原始MoE模型的激活分布从 $p_0, p_1$ 变为 $p'_0, p'_1$。
 
 \textbf{主张}：$p'_i$ 与 $p_i$ 之间的总变差距离满足：
-$$\|p'_i - p_i\|_{\text{TV}} \leq C_{\text{prop}} \sqrt{\gamma}$$
+\begin{equation}
+\|p'_i - p_i\|_{\text{TV}} \leq C_{\text{prop}} \sqrt{\gamma}
+\end{equation}
 
 其中 $C_{\text{prop}}$ 是一个依赖于模型架构的常数（可通过实验标定）。
 
 \textbf{证明}：
 
 \textbf{步骤1}：在输入空间，Pinsker不等式给出
-$$\|D(X') - D(X)\|_{\text{TV}} \leq \sqrt{\frac{\gamma}{2}}$$
+\begin{equation}
+\|D(X') - D(X)\|_{\text{TV}} \leq \sqrt{\frac{\gamma}{2}}
+\end{equation}
 
 \textbf{步骤2}：激活分布是输入分布的函数，$p_i(e) = \Expect_{x \sim D}[g_i(x, e)]$，其中 $g_i$ 是激活函数。
 
 由Lipschitz性质（gating网络的输出对输入变化有界），存在常数 $L_g$ 使得：
-$$\|p'_i - p_i\|_{\text{TV}} \leq L_g \cdot \|D(X') - D(X)\|_{\text{TV}}$$
+\begin{equation}
+\|p'_i - p_i\|_{\text{TV}} \leq L_g \cdot \|D(X') - D(X)\|_{\text{TV}}
+\end{equation}
 
 \textbf{Lipschitz常数 $L_g$ 的界定}：
-$$L_g = \sup_{x \neq x'} \frac{|\ell(x) - \ell(x')|_2}{|x - x'|_2}$$
+\begin{equation}
+L_g = \sup_{x \neq x'} \frac{|\ell(x) - \ell(x')|_2}{|x - x'|_2}
+\end{equation}
 
 其中 $\ell(x)$ 是gating网络的logit向量。在实际MoE模型中，$L_g$ 可通过以下方法标定：
 \begin{itemize}
@@ -282,17 +368,26 @@ $$L_g = \sup_{x \neq x'} \frac{|\ell(x) - \ell(x')|_2}{|x - x'|_2}$$
 \end{itemize}
 
 \textbf{步骤3}：结合步骤1和2：
-$$\|p'_i - p_i\|_{\text{TV}} \leq L_g \sqrt{\frac{\gamma}{2}} =: C_{\text{prop}} \sqrt{\gamma}$$
+\begin{equation}
+\|p'_i - p_i\|_{\text{TV}} \leq L_g \sqrt{\frac{\gamma}{2}} =: C_{\text{prop}} \sqrt{\gamma}
+\end{equation}
 
 其中 $C_{\text{prop}} = L_g \sqrt{\frac{1}{2}}$ \qed
 \end{theorem}
 
 \begin{corollary}
 利用引理4.1，有
-$$\left|\Dstar(p'_0, p'_1) - \Dstar(p_0, p_1)\right| \leq C_{\text{stability}} \cdot C_{\text{prop}} \sqrt{\gamma} \sqrt{\Dstar(p_0, p_1)}$$
+\begin{equation}
+\begin{split}
+&\left|\Dstar(p'_0, p'_1) - \Dstar(p_0, p_1)\right| \\
+&\quad \leq C_{\text{stability}} \cdot C_{\text{prop}} \sqrt{\gamma} \sqrt{\Dstar(p_0, p_1)}
+\end{split}
+\end{equation}
 
 因此：
-$$\boxed{\Dstaradv = \Dstar(p'_0, p'_1) \geq \Dstar(p_0, p_1) - C\sqrt{\gamma \cdot \Dstar(p_0, p_1)}}$$
+\begin{equation}
+\boxed{\Dstaradv = \Dstar(p'_0, p'_1) \geq \Dstar(p_0, p_1) - C\sqrt{\gamma \cdot \Dstar(p_0, p_1)}}
+\end{equation}
 
 其中 $C = C_{\text{stability}} \cdot C_{\text{prop}}$ 是综合常数。
 
@@ -307,21 +402,36 @@ $$\boxed{\Dstaradv = \Dstar(p'_0, p'_1) \geq \Dstar(p_0, p_1) - C\sqrt{\gamma \c
 在攻击强度 $\gamma$ 下：
 
 \textbf{范式A (Token-Logit)}：
-$$Z_A(\gamma) = z_0 - C_A \gamma$$
+\begin{equation}
+Z_A(\gamma) = z_0 - C_A \gamma
+\end{equation}
 
 \textbf{范式B (MoE)}：
-$$\Dstar_B(\gamma) \geq d_0 - C_B \sqrt{\gamma d_0}$$
+\begin{equation}
+\Dstar_B(\gamma) \geq d_0 - C_B \sqrt{\gamma d_0}
+\end{equation}
 
 \textbf{比较}：定义衰减系数
-$$\rho_A(\gamma) := \frac{|Z_A(\gamma) - Z_A(0)|}{Z_A(0)} = \frac{C_A \gamma}{z_0}$$
+\begin{equation}
+\rho_A(\gamma) := \frac{|Z_A(\gamma) - Z_A(0)|}{Z_A(0)} = \frac{C_A \gamma}{z_0}
+\end{equation}
 
-$$\rho_B(\gamma) := \frac{|\Dstar_B(\gamma) - \Dstar_B(0)|}{\Dstar_B(0)} \leq \frac{C_B \sqrt{\gamma d_0}}{d_0} = C_B \sqrt{\frac{\gamma}{d_0}}$$
+\begin{equation}
+\begin{split}
+\rho_B(\gamma) &:= \frac{|\Dstar_B(\gamma) - \Dstar_B(0)|}{\Dstar_B(0)} \\
+&\leq \frac{C_B \sqrt{\gamma d_0}}{d_0} = C_B \sqrt{\frac{\gamma}{d_0}}
+\end{split}
+\end{equation}
 
 \textbf{关键不等式}：
-$$\boxed{\rho_B(\gamma) = O(\sqrt{\gamma}) \ll O(\gamma) = \rho_A(\gamma), \quad \text{when } \gamma \to 0}$$
+\begin{equation}
+\boxed{\rho_B(\gamma) = O(\sqrt{\gamma}) \ll O(\gamma) = \rho_A(\gamma), \quad \text{when } \gamma \to 0}
+\end{equation}
 
 特别地，当 $\gamma$ 足够小时：
-$$\frac{\rho_B(\gamma)}{\rho_A(\gamma)} = \frac{C_B \sqrt{\gamma / d_0}}{C_A \gamma / z_0} \approx \frac{1}{\sqrt{\gamma}} \to \infty$$
+\begin{equation}
+\frac{\rho_B(\gamma)}{\rho_A(\gamma)} = \frac{C_B \sqrt{\gamma / d_0}}{C_A \gamma / z_0} \approx \frac{1}{\sqrt{\gamma}} \to \infty
+\end{equation}
 
 这意味着\textbf{在相同的攻击强度下，范式B的衰减速度显著慢于范式A}。
 \end{theorem}
@@ -332,17 +442,26 @@ $$\frac{\rho_B(\gamma)}{\rho_A(\gamma)} = \frac{C_B \sqrt{\gamma / d_0}}{C_A \ga
 
 \begin{definition}[安全系数$c$]
 定义安全系数 $c$ 为：
-$$c := \frac{\epsilon}{\sqrt{\gamma}}$$
+\begin{equation}
+c := \frac{\epsilon}{\sqrt{\gamma}}
+\end{equation}
 
 或等价地：
-$$\Dstar(p_0, p_1) = c^2 \gamma$$
+\begin{equation}
+\Dstar(p_0, p_1) = c^2 \gamma
+\end{equation}
 
 这个参数化将\textbf{水印强度} $\epsilon$（性能成本）与\textbf{预期威胁} $\gamma$（对手能力）直接联系。
 \end{definition}
 
 \begin{theorem}[安全系数的鲁棒性保证]
 在参数化 $\epsilon = c\sqrt{\gamma}$ 下，对抗后的检测能力为：
-$$\Dstaradv \geq c^2\gamma - C\sqrt{\gamma \cdot c^2\gamma} = \gamma(c^2 - Cc) = \gamma c(c - C)$$
+\begin{equation}
+\begin{split}
+\Dstaradv &\geq c^2\gamma - C\sqrt{\gamma \cdot c^2\gamma} \\
+&= \gamma(c^2 - Cc) = \gamma c(c - C)
+\end{split}
+\end{equation}
 
 \textbf{假设条件}：
 \begin{itemize}
@@ -369,7 +488,9 @@ $$\Dstaradv \geq c^2\gamma - C\sqrt{\gamma \cdot c^2\gamma} = \gamma(c^2 - Cc) =
 
 \begin{theorem}[样本复杂度与安全系数的关系]
 要达到目标检测精度 $\delta$（如99\%），所需样本数为：
-$$n^*(\gamma, c) = \frac{\log(1/\delta)}{\Dstaradv} \geq \frac{\log(1/\delta)}{\gamma c(c - C)}$$
+\begin{equation}
+n^*(\gamma, c) = \frac{\log(1/\delta)}{\Dstaradv} \geq \frac{\log(1/\delta)}{\gamma c(c - C)}
+\end{equation}
 
 当 $c$ 增加时，所需样本数\textbf{非单调地变化}：
 \begin{itemize}
@@ -381,7 +502,9 @@ $$n^*(\gamma, c) = \frac{\log(1/\delta)}{\Dstaradv} \geq \frac{\log(1/\delta)}{\
 
 \begin{corollary}
 最优的安全系数满足：
-$$c^* = \arg\min_c \left[ n^*(\gamma, c) + \lambda \Delta A(c) \right]$$
+\begin{equation}
+c^* = \arg\min_c \left[ n^*(\gamma, c) + \lambda \Delta A(c) \right]
+\end{equation}
 
 其中 $\lambda$ 是性能成本的权重。通常 $c^* \in [C, 2.5C]$ 范围内。
 \end{corollary}
@@ -413,7 +536,10 @@ $$c^* = \arg\min_c \left[ n^*(\gamma, c) + \lambda \Delta A(c) \right]$$
 
 初始z-score：$z_0 = 6.0$（对应PPL下降2\%）
 
-失效攻击强度：$\gamma_{\text{crit}} = \frac{4.0}{150} \approx 0.027$ nats
+失效攻击强度：
+\begin{equation}
+\gamma_{\text{crit}} = \frac{4.0}{150} \approx 0.027 \text{ nats}
+\end{equation}
 
 \textbf{实验预期}：任何GPT-3.5或T5进行的释义，如果引入0.03 nats的分布偏移，就会破坏KGW水印。
 
@@ -422,9 +548,17 @@ $$c^* = \arg\min_c \left[ n^*(\gamma, c) + \lambda \Delta A(c) \right]$$
 初始 $\Dstar = 0.1$ nats（对应 $c=1.0, \gamma=0.01$）
 
 在 $\gamma = 0.03$ nats 攻击下：
-$$\Dstaradv \geq 0.1 - 1.5\sqrt{0.03 \times 0.1} = 0.1 - 0.082 = 0.018 \text{ nats}$$
+\begin{equation}
+\begin{split}
+\Dstaradv &\geq 0.1 - 1.5\sqrt{0.03 \times 0.1} \\
+&= 0.1 - 0.082 = 0.018 \text{ nats}
+\end{split}
+\end{equation}
 
-所需样本数：$n^* = \frac{\log(100)}{0.018} \approx 255$ 个样本
+所需样本数：
+\begin{equation}
+n^* = \frac{\log(100)}{0.018} \approx 255 \text{ 个样本}
+\end{equation}
 
 \textbf{实验预期}：即使经历强释义攻击，仍需约250次推理即可检测水印。
 
@@ -445,10 +579,15 @@ $$\Dstaradv \geq 0.1 - 1.5\sqrt{0.03 \times 0.1} = 0.1 - 0.082 = 0.018 \text{ na
   \item 释义扰动（可选）：通过paraphrase模型生成语义保持但形式变化的输入
   \end{itemize}
 \item \textbf{计算差异}：对每对 $(x_i, x_i')$，计算：
-  $$\Delta \ell_i = |\ell(x_i) - \ell(x_i')|_2, \quad \Delta x_i = |x_i - x_i'|_2$$
+  \begin{equation}
+  \Delta \ell_i = |\ell(x_i) - \ell(x_i')|_2, \quad \Delta x_i = |x_i - x_i'|_2
+  \end{equation}
 \item \textbf{统计Lipschitz常数}：
   \begin{itemize}
-  \item 最大值：$L_g^{\max} = \max_i \frac{\Delta \ell_i}{\Delta x_i}$
+  \item 最大值：
+  \begin{equation}
+  L_g^{\max} = \max_i \frac{\Delta \ell_i}{\Delta x_i}
+  \end{equation}
   \item 95\%分位数：$L_g^{0.95}$，避免极端值影响
   \end{itemize}
 \end{enumerate}
@@ -461,10 +600,17 @@ $$\Dstaradv \geq 0.1 - 1.5\sqrt{0.03 \times 0.1} = 0.1 - 0.082 = 0.018 \text{ na
 \begin{enumerate}
 \item 生成一组释义攻击样本，测量KL扰动 $\gamma$
 \item 计算激活分布的总变差距离，拟合关系：
-  $$\|p'_i - p_i\|_{\text{TV}} \approx C_{\text{prop}} \sqrt{\gamma}$$
+  \begin{equation}
+  \|p'_i - p_i\|_{\text{TV}} \approx C_{\text{prop}} \sqrt{\gamma}
+  \end{equation}
   其中 $C_{\text{prop}} = L_g \sqrt{\frac{1}{2}}$
 \item 通过Chernoff信息变化，拟合 $C_{\text{stability}}$：
-  $$|\Dstar(p', q') - \Dstar(p, q)| \approx C_{\text{stability}} (\delta_p + \delta_q) \sqrt{\Dstar(p, q)}$$
+  \begin{equation}
+  \begin{split}
+  &|\Dstar(p', q') - \Dstar(p, q)| \\
+  &\quad \approx C_{\text{stability}} (\delta_p + \delta_q) \sqrt{\Dstar(p, q)}
+  \end{split}
+  \end{equation}
 \item 综合常数：$C = C_{\text{stability}} \cdot C_{\text{prop}}$
 \end{enumerate}
 
@@ -473,11 +619,16 @@ $$\Dstaradv \geq 0.1 - 1.5\sqrt{0.03 \times 0.1} = 0.1 - 0.082 = 0.018 \text{ na
 \subsection{安全系数 $c$ 的最优标定}
 
 \textbf{优化问题}：
-$$c^* = \arg\min_c \left[ n^*(\gamma, c) + \lambda \Delta A(c) \right]$$
+\begin{equation}
+c^* = \arg\min_c \left[ n^*(\gamma, c) + \lambda \Delta A(c) \right]
+\end{equation}
 
 其中：
 \begin{itemize}
-\item $n^*(\gamma, c) = \frac{\log(1/\delta)}{\gamma c(c - C)}$ 为样本复杂度
+\item 样本复杂度：
+\begin{equation}
+n^*(\gamma, c) = \frac{\log(1/\delta)}{\gamma c(c - C)}
+\end{equation}
 \item $\Delta A(c)$ 为性能成本（精度下降）
 \item $\lambda$ 为性能成本权重
 \end{itemize}
@@ -495,13 +646,17 @@ $$c^* = \arg\min_c \left[ n^*(\gamma, c) + \lambda \Delta A(c) \right]$$
 \subsection{攻击强度 $\gamma$ 的上界估计}
 
 \textbf{方法1：基于编辑距离}
-$$\gamma_{\text{upper}} \approx \frac{L \cdot \log(|\mathcal{V}|)}{N}$$
+\begin{equation}
+\gamma_{\text{upper}} \approx \frac{L \cdot \log(|\mathcal{V}|)}{N}
+\end{equation}
 
 其中 $L$ 为编辑距离，$N$ 为文本长度。
 
 \textbf{方法2：基于语义保持约束}
 对于结构化释义攻击（如句法重排、风格迁移），引入修正项：
-$$\gamma_{\text{effective}} = \gamma_{\text{KL}} + \alpha \cdot \gamma_{\text{structure}}$$
+\begin{equation}
+\gamma_{\text{effective}} = \gamma_{\text{KL}} + \alpha \cdot \gamma_{\text{structure}}
+\end{equation}
 
 其中 $\alpha$ 为结构扰动权重，需通过实验标定。
 
