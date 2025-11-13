@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999995 (TeX Live 2023) (preloaded format=xelatex 2025.5.20)  13 NOV 2025 16:17
+This is XeTeX, Version 3.141592653-2.6-0.999995 (TeX Live 2023) (preloaded format=xelatex 2025.5.20)  13 NOV 2025 17:18
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -550,94 +550,212 @@ Package: booktabs 2020/01/12 v1.61803398 Publication quality tables
 \@lastruleclass=\count319
 \@thisrulewidth=\dimen266
 )
-\c@theorem=\count320
-LaTeX Font Info:    Trying to load font information for TU+ptm on input line 43
+(c:/texlive/2023/texmf-dist/tex/latex/algorithm2e/algorithm2e.sty
+Invalid UTF-8 byte or sequence at line 284 replaced by U+FFFD.
+Invalid UTF-8 byte or sequence at line 299 replaced by U+FFFD.
+Invalid UTF-8 byte or sequence at line 550 replaced by U+FFFD.
+Package: algorithm2e 2017/07/18 v5.2 algorithms environments
+\c@AlgoLine=\count320
+
+(c:/texlive/2023/texmf-dist/tex/latex/base/ifthen.sty
+Package: ifthen 2022/04/13 v1.1d Standard LaTeX ifthen package (DPC)
+)
+\algocf@hangindent=\skip67
+
+(c:/texlive/2023/texmf-dist/tex/latex/ifoddpage/ifoddpage.sty
+Package: ifoddpage 2022/10/18 v1.2 Conditionals for odd/even page detection
+\c@checkoddpage=\count321
+)
+(c:/texlive/2023/texmf-dist/tex/latex/tools/xspace.sty
+Package: xspace 2014/10/28 v1.13 Space after command names (DPC,MH)
+)
+(c:/texlive/2023/texmf-dist/tex/latex/relsize/relsize.sty
+Package: relsize 2013/03/29 ver 4.1
+)
+\skiptotal=\skip68
+\skiplinenumber=\skip69
+\skiprule=\skip70
+\skiphlne=\skip71
+\skiptext=\skip72
+\skiplength=\skip73
+\algomargin=\skip74
+\skipalgocfslide=\skip75
+\algowidth=\dimen267
+\inoutsize=\dimen268
+\inoutindent=\dimen269
+\interspacetitleruled=\dimen270
+\interspacealgoruled=\dimen271
+\interspacetitleboxruled=\dimen272
+\algocf@ruledwidth=\skip76
+\algocf@inoutbox=\box58
+\algocf@inputbox=\box59
+\AlCapSkip=\skip77
+\AlCapHSkip=\skip78
+\algoskipindent=\skip79
+\algocf@nlbox=\box60
+\algocf@hangingbox=\box61
+\algocf@untilbox=\box62
+\algocf@skipuntil=\skip80
+\algocf@capbox=\box63
+\algocf@lcaptionbox=\skip81
+\algoheightruledefault=\skip82
+\algoheightrule=\skip83
+\algotitleheightruledefault=\skip84
+\algotitleheightrule=\skip85
+\c@algocfline=\count322
+\c@algocfproc=\count323
+\c@algocf=\count324
+\algocf@algoframe=\box64
+\algocf@algobox=\box65
+)
+(c:/texlive/2023/texmf-dist/tex/latex/adjustbox/adjustbox.sty
+Package: adjustbox 2022/10/17 v1.3a Adjusting TeX boxes (trim, clip, ...)
+
+(c:/texlive/2023/texmf-dist/tex/latex/xkeyval/xkeyval.sty
+Package: xkeyval 2022/06/16 v2.9 package option processing (HA)
+
+(c:/texlive/2023/texmf-dist/tex/generic/xkeyval/xkeyval.tex
+(c:/texlive/2023/texmf-dist/tex/generic/xkeyval/xkvutils.tex
+\XKV@toks=\toks29
+\XKV@tempa@toks=\toks30
+)
+\XKV@depth=\count325
+File: xkeyval.tex 2014/12/03 v2.7a key=value parser (HA)
+))
+(c:/texlive/2023/texmf-dist/tex/latex/adjustbox/adjcalc.sty
+Package: adjcalc 2012/05/16 v1.1 Provides advanced setlength with multiple back
+-ends (calc, etex, pgfmath)
+)
+(c:/texlive/2023/texmf-dist/tex/latex/adjustbox/trimclip.sty
+Package: trimclip 2020/08/19 v1.2 Trim and clip general TeX material
+
+(c:/texlive/2023/texmf-dist/tex/latex/collectbox/collectbox.sty
+Package: collectbox 2022/10/17 v0.4c Collect macro arguments as boxes
+\collectedbox=\box66
+)
+\tc@llx=\dimen273
+\tc@lly=\dimen274
+\tc@urx=\dimen275
+\tc@ury=\dimen276
+Package trimclip Info: Using driver 'tc-xetex.def'.
+
+(c:/texlive/2023/texmf-dist/tex/latex/adjustbox/tc-xetex.def
+File: tc-xetex.def 2019/01/04 v2.2 Clipping driver for xetex
+))
+\adjbox@Width=\dimen277
+\adjbox@Height=\dimen278
+\adjbox@Depth=\dimen279
+\adjbox@Totalheight=\dimen280
+\adjbox@pwidth=\dimen281
+\adjbox@pheight=\dimen282
+\adjbox@pdepth=\dimen283
+\adjbox@ptotalheight=\dimen284
+
+(c:/texlive/2023/texmf-dist/tex/latex/varwidth/varwidth.sty
+Package: varwidth 2009/03/30 ver 0.92;  Variable-width minipages
+\@vwid@box=\box67
+\sift@deathcycles=\count326
+\@vwid@loff=\dimen285
+\@vwid@roff=\dimen286
+))
+(c:/texlive/2023/texmf-dist/tex/latex/tools/array.sty
+Package: array 2022/09/04 v2.5g Tabular extension package (FMi)
+\col@sep=\dimen287
+\ar@mcellbox=\box68
+\extrarowheight=\dimen288
+\NC@list=\toks31
+\extratabsurround=\skip86
+\backup@length=\skip87
+\ar@cellbox=\box69
+)
+\c@theorem=\count327
+LaTeX Font Info:    Trying to load font information for TU+ptm on input line 62
 .
-LaTeX Font Info:    No file TUptm.fd. on input line 43.
+LaTeX Font Info:    No file TUptm.fd. on input line 62.
 
 
 LaTeX Font Warning: Font shape `TU/ptm/m/n' undefined
-(Font)              using `TU/lmr/m/n' instead on input line 43.
+(Font)              using `TU/lmr/m/n' instead on input line 62.
 
 (./moe_paradigm_rigorous_proofs.aux)
 \openout1 = `moe_paradigm_rigorous_proofs.aux'.
 
-LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 43.
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 43.
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 43.
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 43.
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 43.
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for TU/lmr/m/n on input line 43.
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 43.
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 43.
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 43.
-LaTeX Font Info:    ... okay on input line 43.
-LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 43.
-LaTeX Font Info:    ... okay on input line 43.
+LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 62.
+LaTeX Font Info:    ... okay on input line 62.
+LaTeX Font Info:    Checking defaults for OMS/cmsy/m/n on input line 62.
+LaTeX Font Info:    ... okay on input line 62.
+LaTeX Font Info:    Checking defaults for OT1/cmr/m/n on input line 62.
+LaTeX Font Info:    ... okay on input line 62.
+LaTeX Font Info:    Checking defaults for T1/cmr/m/n on input line 62.
+LaTeX Font Info:    ... okay on input line 62.
+LaTeX Font Info:    Checking defaults for TS1/cmr/m/n on input line 62.
+LaTeX Font Info:    ... okay on input line 62.
+LaTeX Font Info:    Checking defaults for TU/lmr/m/n on input line 62.
+LaTeX Font Info:    ... okay on input line 62.
+LaTeX Font Info:    Checking defaults for OMX/cmex/m/n on input line 62.
+LaTeX Font Info:    ... okay on input line 62.
+LaTeX Font Info:    Checking defaults for U/cmr/m/n on input line 62.
+LaTeX Font Info:    ... okay on input line 62.
+LaTeX Font Info:    Checking defaults for PD1/pdf/m/n on input line 62.
+LaTeX Font Info:    ... okay on input line 62.
+LaTeX Font Info:    Checking defaults for PU/pdf/m/n on input line 62.
+LaTeX Font Info:    ... okay on input line 62.
 
 Package fontspec Info: Adjusting the maths setup (use [no-math] to avoid
 (fontspec)             this).
 
 \symlegacymaths=\mathgroup6
 LaTeX Font Info:    Overwriting symbol font `legacymaths' in version `bold'
-(Font)                  OT1/cmr/m/n --> OT1/cmr/bx/n on input line 43.
-LaTeX Font Info:    Redeclaring math accent \acute on input line 43.
-LaTeX Font Info:    Redeclaring math accent \grave on input line 43.
-LaTeX Font Info:    Redeclaring math accent \ddot on input line 43.
-LaTeX Font Info:    Redeclaring math accent \tilde on input line 43.
-LaTeX Font Info:    Redeclaring math accent \bar on input line 43.
-LaTeX Font Info:    Redeclaring math accent \breve on input line 43.
-LaTeX Font Info:    Redeclaring math accent \check on input line 43.
-LaTeX Font Info:    Redeclaring math accent \hat on input line 43.
-LaTeX Font Info:    Redeclaring math accent \dot on input line 43.
-LaTeX Font Info:    Redeclaring math accent \mathring on input line 43.
-LaTeX Font Info:    Redeclaring math symbol \Gamma on input line 43.
-LaTeX Font Info:    Redeclaring math symbol \Delta on input line 43.
-LaTeX Font Info:    Redeclaring math symbol \Theta on input line 43.
-LaTeX Font Info:    Redeclaring math symbol \Lambda on input line 43.
-LaTeX Font Info:    Redeclaring math symbol \Xi on input line 43.
-LaTeX Font Info:    Redeclaring math symbol \Pi on input line 43.
-LaTeX Font Info:    Redeclaring math symbol \Sigma on input line 43.
-LaTeX Font Info:    Redeclaring math symbol \Upsilon on input line 43.
-LaTeX Font Info:    Redeclaring math symbol \Phi on input line 43.
-LaTeX Font Info:    Redeclaring math symbol \Psi on input line 43.
-LaTeX Font Info:    Redeclaring math symbol \Omega on input line 43.
-LaTeX Font Info:    Redeclaring math symbol \mathdollar on input line 43.
-LaTeX Font Info:    Redeclaring symbol font `operators' on input line 43.
+(Font)                  OT1/cmr/m/n --> OT1/cmr/bx/n on input line 62.
+LaTeX Font Info:    Redeclaring math accent \acute on input line 62.
+LaTeX Font Info:    Redeclaring math accent \grave on input line 62.
+LaTeX Font Info:    Redeclaring math accent \ddot on input line 62.
+LaTeX Font Info:    Redeclaring math accent \tilde on input line 62.
+LaTeX Font Info:    Redeclaring math accent \bar on input line 62.
+LaTeX Font Info:    Redeclaring math accent \breve on input line 62.
+LaTeX Font Info:    Redeclaring math accent \check on input line 62.
+LaTeX Font Info:    Redeclaring math accent \hat on input line 62.
+LaTeX Font Info:    Redeclaring math accent \dot on input line 62.
+LaTeX Font Info:    Redeclaring math accent \mathring on input line 62.
+LaTeX Font Info:    Redeclaring math symbol \Gamma on input line 62.
+LaTeX Font Info:    Redeclaring math symbol \Delta on input line 62.
+LaTeX Font Info:    Redeclaring math symbol \Theta on input line 62.
+LaTeX Font Info:    Redeclaring math symbol \Lambda on input line 62.
+LaTeX Font Info:    Redeclaring math symbol \Xi on input line 62.
+LaTeX Font Info:    Redeclaring math symbol \Pi on input line 62.
+LaTeX Font Info:    Redeclaring math symbol \Sigma on input line 62.
+LaTeX Font Info:    Redeclaring math symbol \Upsilon on input line 62.
+LaTeX Font Info:    Redeclaring math symbol \Phi on input line 62.
+LaTeX Font Info:    Redeclaring math symbol \Psi on input line 62.
+LaTeX Font Info:    Redeclaring math symbol \Omega on input line 62.
+LaTeX Font Info:    Redeclaring math symbol \mathdollar on input line 62.
+LaTeX Font Info:    Redeclaring symbol font `operators' on input line 62.
 LaTeX Font Info:    Encoding `OT1' has changed to `TU' for symbol font
-(Font)              `operators' in the math version `normal' on input line 43.
+(Font)              `operators' in the math version `normal' on input line 62.
 LaTeX Font Info:    Overwriting symbol font `operators' in version `normal'
-(Font)                  OT1/cmr/m/n --> TU/ptm/m/n on input line 43.
+(Font)                  OT1/cmr/m/n --> TU/ptm/m/n on input line 62.
 LaTeX Font Info:    Encoding `OT1' has changed to `TU' for symbol font
-(Font)              `operators' in the math version `bold' on input line 43.
+(Font)              `operators' in the math version `bold' on input line 62.
 LaTeX Font Info:    Overwriting symbol font `operators' in version `bold'
-(Font)                  OT1/cmr/bx/n --> TU/ptm/m/n on input line 43.
+(Font)                  OT1/cmr/bx/n --> TU/ptm/m/n on input line 62.
 LaTeX Font Info:    Overwriting symbol font `operators' in version `normal'
-(Font)                  TU/ptm/m/n --> TU/ptm/m/n on input line 43.
+(Font)                  TU/ptm/m/n --> TU/ptm/m/n on input line 62.
 LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `normal'
-(Font)                  OT1/cmr/m/it --> TU/ptm/m/it on input line 43.
+(Font)                  OT1/cmr/m/it --> TU/ptm/m/it on input line 62.
 LaTeX Font Info:    Overwriting math alphabet `\mathbf' in version `normal'
-(Font)                  OT1/cmr/bx/n --> TU/ptm/b/n on input line 43.
+(Font)                  OT1/cmr/bx/n --> TU/ptm/b/n on input line 62.
 LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `normal'
-(Font)                  OT1/cmss/m/n --> TU/phv/m/n on input line 43.
+(Font)                  OT1/cmss/m/n --> TU/phv/m/n on input line 62.
 LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `normal'
-(Font)                  OT1/cmtt/m/n --> TU/pcr/m/n on input line 43.
+(Font)                  OT1/cmtt/m/n --> TU/pcr/m/n on input line 62.
 LaTeX Font Info:    Overwriting symbol font `operators' in version `bold'
-(Font)                  TU/ptm/m/n --> TU/ptm/b/n on input line 43.
+(Font)                  TU/ptm/m/n --> TU/ptm/b/n on input line 62.
 LaTeX Font Info:    Overwriting math alphabet `\mathit' in version `bold'
-(Font)                  OT1/cmr/bx/it --> TU/ptm/b/it on input line 43.
+(Font)                  OT1/cmr/bx/it --> TU/ptm/b/it on input line 62.
 LaTeX Font Info:    Overwriting math alphabet `\mathsf' in version `bold'
-(Font)                  OT1/cmss/bx/n --> TU/phv/b/n on input line 43.
+(Font)                  OT1/cmss/bx/n --> TU/phv/b/n on input line 62.
 LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
-(Font)                  OT1/cmtt/m/n --> TU/pcr/b/n on input line 43.
+(Font)                  OT1/cmtt/m/n --> TU/pcr/b/n on input line 62.
 
 *geometry* driver: auto-detecting
 *geometry* detected driver: xetex
@@ -673,18 +791,18 @@ LaTeX Font Info:    Overwriting math alphabet `\mathtt' in version `bold'
 * \@reversemarginfalse
 * (1in=72.27pt=25.4mm, 1cm=28.453pt)
 
-Package hyperref Info: Link coloring OFF on input line 43.
+Package hyperref Info: Link coloring OFF on input line 62.
 (./moe_paradigm_rigorous_proofs.out) (./moe_paradigm_rigorous_proofs.out)
 \@outlinefile=\write3
 \openout3 = `moe_paradigm_rigorous_proofs.out'.
 
-LaTeX Font Info:    Trying to load font information for U+msa on input line 46.
+LaTeX Font Info:    Trying to load font information for U+msa on input line 65.
 
 
 (c:/texlive/2023/texmf-dist/tex/latex/amsfonts/umsa.fd
 File: umsa.fd 2013/01/14 v3.01 AMS symbols A
 )
-LaTeX Font Info:    Trying to load font information for U+msb on input line 46.
+LaTeX Font Info:    Trying to load font information for U+msb on input line 65.
 
 
 (c:/texlive/2023/texmf-dist/tex/latex/amsfonts/umsb.fd
@@ -702,13 +820,13 @@ Package fontspec Info: Could not resolve font "FangSong/B" (it probably
 Package fontspec Info: Could not resolve font "FangSong/I" (it probably
 (fontspec)             doesn't exist).
 
-LaTeX Font Info:    Trying to load font information for TU+pcr on input line 46
+LaTeX Font Info:    Trying to load font information for TU+pcr on input line 65
 .
-LaTeX Font Info:    No file TUpcr.fd. on input line 46.
+LaTeX Font Info:    No file TUpcr.fd. on input line 65.
 
 
 LaTeX Font Warning: Font shape `TU/pcr/m/n' undefined
-(Font)              using `TU/lmr/m/n' instead on input line 46.
+(Font)              using `TU/lmr/m/n' instead on input line 65.
 
 
 Package fontspec Info: Font family 'FangSong(0)' created for font 'FangSong'
@@ -723,19 +841,19 @@ Package fontspec Info: Font family 'FangSong(0)' created for font 'FangSong'
 
 
 LaTeX Font Warning: Font shape `TU/ptm/b/n' undefined
-(Font)              using `TU/ptm/m/n' instead on input line 47.
+(Font)              using `TU/ptm/m/n' instead on input line 66.
 
 
 LaTeX Font Warning: Font shape `TU/ptm/m/it' undefined
-(Font)              using `TU/ptm/m/n' instead on input line 55.
+(Font)              using `TU/ptm/m/n' instead on input line 74.
 
 
 LaTeX Font Warning: Font shape `TU/ptm/b/it' undefined
-(Font)              using `TU/ptm/b/n' instead on input line 73.
+(Font)              using `TU/ptm/b/n' instead on input line 92.
 
 
 LaTeX Font Warning: Font shape `TU/SimSun(0)/b/it' undefined
-(Font)              using `TU/SimSun(0)/b/n' instead on input line 73.
+(Font)              using `TU/SimSun(0)/b/n' instead on input line 92.
 
 [1
 
@@ -747,54 +865,54 @@ Missing character: There is no 度 (U+5EA6) in font [lmroman10-regular]:mapping=
 ex-text;!
 
 LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 233.
+(Font)              using `TU/ptm/m/it' instead on input line 252.
 
 [2]
-Underfull \hbox (badness 10000) in paragraph at lines 267--268
+Underfull \hbox (badness 10000) in paragraph at lines 286--287
 []\TU/SimSun(0)/m/it/10 攻 击 强 度 通 过 \TU/ptm/b/it/10 KL \TU/SimSun(0)/m/it/10 散 
 度 $\OML/cmm/m/it/10 ^^M \OT1/cmr/m/n/10 =
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 272--273
+Underfull \hbox (badness 10000) in paragraph at lines 291--292
 []\TU/SimSun(0)/m/it/10 释 义 攻 击 改 变 输 入 分 布，|  使 得
  []
 
 
 LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 332.
+(Font)              using `TU/ptm/m/it' instead on input line 351.
 
 [3]
 
 LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 473.
+(Font)              using `TU/ptm/m/it' instead on input line 492.
 
 [4]
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 496.
+(hyperref)                removing `math shift' on input line 515.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `subscript' on input line 496.
+(hyperref)                removing `subscript' on input line 515.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 496.
+(hyperref)                removing `math shift' on input line 515.
 
 
-Overfull \hbox (21.56978pt too wide) detected at line 507
+Overfull \hbox (21.56981pt too wide) detected at line 526
 [][][][][] \OT1/cmr/m/n/10 = []
  []
 
 
-Underfull \hbox (badness 1205) in paragraph at lines 583--584
+Underfull \hbox (badness 1205) in paragraph at lines 602--603
 [][]\TU/SimSun(0)/b/n/10 定 理 \TU/ptm/b/it/10 4.7 (\TU/SimSun(0)/m/n/10 对 抗 鲁 棒 
 性 的 次 线 性 衰 减  |— —|  核 心
  []
 
 
-Underfull \hbox (badness 1484) in paragraph at lines 583--584
+Underfull \hbox (badness 1484) in paragraph at lines 602--603
 \TU/SimSun(0)/m/n/10 定 理\TU/ptm/b/it/10 ). []\TU/SimSun(0)/m/it/10 在 释 义 攻 击 $\
 OMS/cmsy/m/n/10 P \OT1/cmr/m/n/10 : \OML/cmm/m/it/10 x \OMS/cmsy/m/n/10 ! \OML/
 cmm/m/it/10 x[]$ \TU/SimSun(0)/m/it/10 下，|  满 足
@@ -802,32 +920,32 @@ cmm/m/it/10 x[]$ \TU/SimSun(0)/m/it/10 下，|  满 足
 
 
 LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 590.
+(Font)              using `TU/ptm/m/it' instead on input line 609.
 
 [5]
-Overfull \hbox (5.27489pt too wide) detected at line 662
+Overfull \hbox (5.27489pt too wide) detected at line 681
 [][][][]
  []
 
 
-Overfull \hbox (21.41023pt too wide) detected at line 676
+Overfull \hbox (21.41023pt too wide) detected at line 695
 [][][]\OMS/cmsy/m/n/10 k\OML/cmm/m/it/10 D\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 X[]
 \OT1/cmr/m/n/10 ) \OMS/cmsy/m/n/10 ^^@ \OML/cmm/m/it/10 D\OT1/cmr/m/n/10 (\OML/
 cmm/m/it/10 X\OT1/cmr/m/n/10 )\OMS/cmsy/m/n/10 k[] ^^T []
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 678--679
+Underfull \hbox (badness 10000) in paragraph at lines 697--698
 []\TU/SimSun(0)/m/it/10 其 中 \TU/ptm/b/it/10 Bhattacharyya \TU/SimSun(0)/m/it/10
  系 数 $[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 p; q\OT1/cmr/m/n/10 ) =
  []
 
 
 LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 701.
+(Font)              using `TU/ptm/m/it' instead on input line 720.
 
 [6]
-Overfull \hbox (41.41023pt too wide) detected at line 708
+Overfull \hbox (41.41023pt too wide) detected at line 727
 [][][]\OMS/cmsy/m/n/10 k\OML/cmm/m/it/10 D\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 X[]
 \OT1/cmr/m/n/10 ) \OMS/cmsy/m/n/10 ^^@ \OML/cmm/m/it/10 D\OT1/cmr/m/n/10 (\OML/
 cmm/m/it/10 X\OT1/cmr/m/n/10 )\OMS/cmsy/m/n/10 k[] ^^T []
@@ -835,124 +953,71 @@ cmm/m/it/10 X\OT1/cmr/m/n/10 )\OMS/cmsy/m/n/10 k[] ^^T []
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 773.
+(hyperref)                removing `math shift' on input line 792.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 773.
+(hyperref)                removing `math shift' on input line 792.
 
 
-Underfull \hbox (badness 5726) in paragraph at lines 803--804
+Underfull \hbox (badness 5726) in paragraph at lines 822--823
 []\TU/SimSun(0)/m/it/10 攻 击 策 略 为 编 辑 距 离 约 束 的 释 义 攻 击
  []
 
 
 LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 815.
+(Font)              using `TU/ptm/m/it' instead on input line 834.
 
 [7]
-Overfull \hbox (127.29158pt too wide) in paragraph at lines 861--870
- [] 
- []
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 917.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 898.
+(hyperref)                removing `\gamma' on input line 917.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `\gamma' on input line 898.
-
-
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 898.
+(hyperref)                removing `math shift' on input line 917.
 
 
 LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 913.
+(Font)              using `TU/ptm/m/it' instead on input line 932.
 
 [8]
-Overfull \hbox (94.67192pt too wide) in paragraph at lines 917--926
- [] 
- []
 
-
-Overfull \hbox (28.21074pt too wide) in paragraph at lines 948--958
- [] 
- []
-
-Missing character: There is no ✓ (U+2713) in font [lmroman10-regular]:mapping=t
-ex-text;!
-Missing character: There is no ✓ (U+2713) in font [lmroman10-regular]:mapping=t
-ex-text;!
-Missing character: There is no ✓ (U+2713) in font [lmroman10-regular]:mapping=t
-ex-text;!
-Missing character: There is no ✓ (U+2713) in font [lmroman10-regular]:mapping=t
-ex-text;!
-Missing character: There is no ✓ (U+2713) in font [lmroman10-regular]:mapping=t
-ex-text;!
-Missing character: There is no ✓ (U+2713) in font [lmroman10-regular]:mapping=t
-ex-text;!
-Missing character: There is no ✗ (U+2717) in font [lmroman10-regular]:mapping=t
-ex-text;!
-Missing character: There is no ✓ (U+2713) in font [lmroman10-regular]:mapping=t
-ex-text;!
-Missing character: There is no ✗ (U+2717) in font [lmroman10-regular]:mapping=t
-ex-text;!
-Missing character: There is no ✓ (U+2713) in font [lmroman10-regular]:mapping=t
-ex-text;!
-Missing character: There is no ✗ (U+2717) in font [lmroman10-regular]:mapping=t
-ex-text;!
-Missing character: There is no ✓ (U+2713) in font [lmroman10-regular]:mapping=t
-ex-text;!
-
-Overfull \hbox (35.97914pt too wide) in paragraph at lines 982--995
- [] 
- []
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 1030.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 1010.
+(hyperref)                removing `subscript' on input line 1030.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `subscript' on input line 1010.
+(hyperref)                removing `math shift' on input line 1030.
 
 
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 1010.
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 1016--1017
+Underfull \hbox (badness 10000) in paragraph at lines 1036--1037
 []\TU/SimSun(0)/m/n/10 模 型：| \TU/ptm/b/it/10 LLaMA-7B-MoE, Mixtral-8x7B,
  []
 
 
 LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 1022.
+(Font)              using `TU/ptm/m/it' instead on input line 1042.
 
 [9]
-Missing character: There is no ✓ (U+2713) in font [lmroman10-regular]:mapping=t
-ex-text;!
-Missing character: There is no ✓ (U+2713) in font [lmroman10-regular]:mapping=t
-ex-text;!
-Missing character: There is no ✓ (U+2713) in font [lmroman10-regular]:mapping=t
-ex-text;!
 
-Overfull \hbox (17.58142pt too wide) in paragraph at lines 1027--1036
- [] 
- []
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 1066.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 1046.
+(hyperref)                removing `math shift' on input line 1066.
 
 
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 1046.
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 1053--1054
+Underfull \hbox (badness 10000) in paragraph at lines 1073--1074
 []\TU/SimSun(0)/m/n/10 扫 参：| $\OML/cmm/m/it/10 c \OMS/cmsy/m/n/10 2 \OT1/cmr/m/
 n/10 [1\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 5\OML/cmm/m/it/10 ; \OT1/cmr/m/n/10 2\
 OML/cmm/m/it/10 :\OT1/cmr/m/n/10 0\OML/cmm/m/it/10 ; \OT1/cmr/m/n/10 2\OML/cmm/
@@ -961,29 +1026,24 @@ m/it/10 :\OT1/cmr/m/n/10 5\OML/cmm/m/it/10 ; \OT1/cmr/m/n/10 3\OML/cmm/m/it/10
 r/m/n/10 5]$ |\TU/SimSun(0)/m/n/10 （对 应
  []
 
-Missing character: There is no ✓ (U+2713) in font [lmroman10-regular]:mapping=t
-ex-text;!
-
-Overfull \hbox (84.86827pt too wide) in paragraph at lines 1059--1071
- [] 
- []
-
+Missing character: There is no ✓ (U+2713) in font [lmroman8-regular]:mapping=te
+x-text;!
 Missing character: There is no ✓ (U+2713) in font [lmroman10-regular]:mapping=t
 ex-text;!
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 1105.
+(hyperref)                removing `math shift' on input line 1125.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `subscript' on input line 1105.
+(hyperref)                removing `subscript' on input line 1125.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 1105.
+(hyperref)                removing `math shift' on input line 1125.
 
 
-Underfull \hbox (badness 8132) in paragraph at lines 1119--1120
+Underfull \hbox (badness 8132) in paragraph at lines 1139--1140
 []\TU/SimSun(0)/m/n/10 建 议 $\OML/cmm/m/it/10 "$ \TU/SimSun(0)/m/n/10 值 扫 描：| $\
 OT1/cmr/m/n/10 [0\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 01\OML/cmm/m/it/10 ; \OT1/cm
 r/m/n/10 0\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 02\OML/cmm/m/it/10 ; \OT1/cmr/m/n/1
@@ -992,43 +1052,43 @@ r/m/n/10 0\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 02\OML/cmm/m/it/10 ; \OT1/cmr/m/n/1
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1119--1120
+Underfull \hbox (badness 10000) in paragraph at lines 1139--1140
 \TU/SimSun(0)/m/n/10 对 应 的 \TU/ptm/b/it/10 embedding \TU/SimSun(0)/m/n/10 距 离 比
  例：|
  []
 
 
 LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 1125.
+(Font)              using `TU/ptm/m/it' instead on input line 1145.
 
 [10]
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 1189.
+(hyperref)                removing `math shift' on input line 1210.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 1189.
+(hyperref)                removing `math shift' on input line 1210.
 
 
-Underfull \hbox (badness 2735) in paragraph at lines 1193--1194
+Underfull \hbox (badness 2735) in paragraph at lines 1214--1215
 []\TU/SimSun(0)/b/n/10 生 成 释 义 攻 击 样 本\TU/SimSun(0)/m/n/10 ：|  对 验 证 集 样 本 生 成
  []
 
 
-Underfull \hbox (badness 3568) in paragraph at lines 1193--1194
+Underfull \hbox (badness 3568) in paragraph at lines 1214--1215
 \TU/ptm/b/it/10 paraphrase \TU/SimSun(0)/m/n/10 版 本，|  测 量 \TU/ptm/b/it/10 KL \
 TU/SimSun(0)/m/n/10 扰 动 $\OML/cmm/m/it/10 ^^M[] \OT1/cmr/m/n/10 =
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1199--1200
+Underfull \hbox (badness 10000) in paragraph at lines 1220--1221
 []\TU/SimSun(0)/m/n/10 计 算 \TU/ptm/b/it/10 KL \TU/SimSun(0)/m/n/10 扰 动 强 度：| $\
 OML/cmm/m/it/10 ^^M[] \OT1/cmr/m/n/10 =
  []
 
 
-Underfull \hbox (badness 5119) in paragraph at lines 1199--1200
+Underfull \hbox (badness 5119) in paragraph at lines 1220--1221
 \OML/cmm/m/it/10 D[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 D\OT1/cmr/m/n/10 (\OML/cm
 m/m/it/10 x[]\OT1/cmr/m/n/10 )\OMS/cmsy/m/n/10 jj\OML/cmm/m/it/10 D\OT1/cmr/m/n
 /10 (\OML/cmm/m/it/10 x[]\OT1/cmr/m/n/10 ))$\TU/SimSun(0)/m/n/10 ，|  其 中 $\OML/
@@ -1037,7 +1097,7 @@ cmm/m/it/10 D\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 x\OT1/cmr/m/n/10 )$ \TU/SimSun(0
  []
 
 
-Overfull \hbox (36.14896pt too wide) detected at line 1206
+Overfull \hbox (36.14896pt too wide) detected at line 1227
 [][][]\OML/cmm/m/it/10 ^^N[] \OT1/cmr/m/n/10 = \OMS/cmsy/m/n/10 k\OML/cmm/m/it/
 10 p\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 e\OMS/cmsy/m/n/10 j\OML/cmm/m/it/10 x[]\O
 T1/cmr/m/n/10 ) \OMS/cmsy/m/n/10 ^^@ \OML/cmm/m/it/10 p\OT1/cmr/m/n/10 (\OML/cm
@@ -1049,7 +1109,7 @@ n/10 (\OML/cmm/m/it/10 e\OMS/cmsy/m/n/10 j\OML/cmm/m/it/10 x[]\OT1/cmr/m/n/10 )
  []
 
 
-Overfull \hbox (46.40166pt too wide) detected at line 1212
+Overfull \hbox (46.40166pt too wide) detected at line 1233
 [][][]\OML/cmm/m/it/10 ^^N[] \OT1/cmr/m/n/10 = \OMS/cmsy/m/n/10 k\OML/cmm/m/it/
 10 P\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 S\OMS/cmsy/m/n/10 j\OML/cmm/m/it/10 x[]\O
 T1/cmr/m/n/10 ) \OMS/cmsy/m/n/10 ^^@ \OML/cmm/m/it/10 P\OT1/cmr/m/n/10 (\OML/cm
@@ -1061,7 +1121,11 @@ sy/m/n/10 j\OML/cmm/m/it/10 x[]\OT1/cmr/m/n/10 )\OMS/cmsy/m/n/10 j
  []
 
 
-Overfull \hbox (11.83698pt too wide) detected at line 1240
+LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
+(Font)              using `TU/ptm/m/it' instead on input line 1247.
+
+[11]
+Overfull \hbox (11.83698pt too wide) detected at line 1261
 [][][]\OMS/cmsy/m/n/10 j\OML/cmm/m/it/10 D[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 p
 []; q[]\OT1/cmr/m/n/10 ) \OMS/cmsy/m/n/10 ^^@ \OML/cmm/m/it/10 D[]\OT1/cmr/m/n/
 10 (\OML/cmm/m/it/10 p; q\OT1/cmr/m/n/10 )\OMS/cmsy/m/n/10 j ^^Y \OML/cmm/m/it/
@@ -1070,78 +1134,32 @@ Overfull \hbox (11.83698pt too wide) detected at line 1240
  []
 
 
-LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 1240.
-
-[11]
-Overfull \hbox (22.45224pt too wide) in paragraph at lines 1276--1276
-[]\TU/ptm/b/n/8 13. C_prop, R_squared = robust_regression(sqrt_gammas, deltas)[
-] 
- []
-
-
-Overfull \hbox (48.56424pt too wide) in paragraph at lines 1276--1276
-[]\TU/ptm/b/n/8 19.     D_star_i_prime = compute_chernoff_info(p_i_prime, q_i_p
-rime)[] 
- []
-
-
-Underfull \hbox (badness 5475) in paragraph at lines 1276--1276
-[]\TU/ptm/b/n/8 20.     chernoff_diffs.append(abs(D_star_i_prime -
- []
-
-
-Overfull \hbox (6.14024pt too wide) in paragraph at lines 1276--1276
-[]\TU/ptm/b/n/8 21. C_stability = fit_stability_constant(deltas, chernoff_diffs
-)[] 
- []
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 1298.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 1281.
-
-
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 1281.
-
-
-Overfull \hbox (4.94028pt too wide) in paragraph at lines 1399--1399
-[]\TU/ptm/b/n/8 Input: validation set D, attack strength gamma, weight lambda,[
-] 
- []
+(hyperref)                removing `math shift' on input line 1298.
 
 
 LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 1399.
+(Font)              using `TU/ptm/m/it' instead on input line 1363.
 
 [12]
-Underfull \hbox (badness 10000) in paragraph at lines 1399--1399
-[]\TU/ptm/b/n/8 25. c_fine = [c_star-0.4, c_star-
- []
 
-
-Underfull \hbox (badness 10000) in paragraph at lines 1399--1399
-[]\TU/ptm/b/n/8 34. c_precise = [c_star-0.1, c_star-
- []
-
-
-Underfull \vbox (badness 2884) has occurred while \output is active []
-
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 1448.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 1433.
+(hyperref)                removing `\gamma' on input line 1448.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `\gamma' on input line 1433.
+(hyperref)                removing `math shift' on input line 1448.
 
 
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 1433.
-
-
-Overfull \hbox (27.33736pt too wide) detected at line 1465
+Overfull \hbox (27.33736pt too wide) detected at line 1480
 [][][]\OML/cmm/m/it/10 ^^M[] \OMS/cmsy/m/n/10 ^^Y [] ^^A [] [] ^^Y \OT1/cmr/m/n
 /10 0\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 05 \OMS/cmsy/m/n/10 ^^A []\OT1/cmr/m/n/1
 0 (12800) \OMS/cmsy/m/n/10 ^^Y \OT1/cmr/m/n/10 0\OML/cmm/m/it/10 :\OT1/cmr/m/n/
@@ -1152,28 +1170,34 @@ Missing character: There is no ✓ (U+2713) in font [lmroman10-regular]:mapping=
 ex-text;!
 
 LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 1484.
+(Font)              using `TU/ptm/m/it' instead on input line 1535.
 
 [13]
 
 LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 1529.
+(Font)              using `TU/ptm/m/it' instead on input line 1544.
 
 [14] (./moe_paradigm_rigorous_proofs.aux)
 
 LaTeX Font Warning: Some font shapes were not available, defaults substituted.
 
-Package rerunfilecheck Info: File `moe_paradigm_rigorous_proofs.out' has not ch
-anged.
-(rerunfilecheck)             Checksum: 72A44459E4ED2EE20F53165580F3DEDA;5668.
+
+Package rerunfilecheck Warning: File `moe_paradigm_rigorous_proofs.out' has cha
+nged.
+(rerunfilecheck)                Rerun to get outlines right
+(rerunfilecheck)                or use package `bookmark'.
+
+Package rerunfilecheck Info: Checksums for `moe_paradigm_rigorous_proofs.out':
+(rerunfilecheck)             Before: 810389E555CF4DE55D86568F43DB0A86;730
+(rerunfilecheck)             After:  72A44459E4ED2EE20F53165580F3DEDA;5668.
  ) 
 Here is how much of TeX's memory you used:
- 17196 strings out of 476683
- 391132 string characters out of 5807575
- 1885012 words of memory out of 5000000
- 37187 multiletter control sequences out of 15000+600000
- 522442 words of font info for 100 fonts, out of 8000000 for 9000
+ 19532 strings out of 476683
+ 434487 string characters out of 5807575
+ 1886012 words of memory out of 5000000
+ 39453 multiletter control sequences out of 15000+600000
+ 526794 words of font info for 121 fonts, out of 8000000 for 9000
  1348 hyphenation exceptions out of 8191
- 89i,22n,97p,396b,583s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 89i,22n,97p,396b,646s stack positions out of 10000i,1000n,20000p,200000b,200000s
 
 Output written on moe_paradigm_rigorous_proofs.pdf (14 pages).
