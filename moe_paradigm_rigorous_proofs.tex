@@ -29,6 +29,7 @@
 \newcommand{\Dstaradv}{D^*_{\text{adv}}}
 \newcommand{\Expect}{\mathbb{E}}
 \newcommand{\Prob}{\mathbb{P}}
+\newcommand{\Var}{\text{Var}}
 
 \title{范式之争的严格数学证明：\\MoE专家激活水印的Signal-Attack Decoupling理论}
 
@@ -73,21 +74,32 @@ yunhao\\
 \begin{equation}
 \mathcal{S} \cap \mathcal{A}_{\text{direct}} = \emptyset
 \end{equation}
-其中 $\mathcal{A}_{\text{direct}}$ 是对手能直接操纵的空间。
+
+其中 $\mathcal{A}_{\text{direct}}$ 是对手能\textbf{直接操纵的空间}，具体定义如下：
+\begin{itemize}
+\item 对于\textbf{输入级攻击}（本文主要考虑）：$\mathcal{A}_{\text{direct}} = \mathcal{X}$（输入文本空间），对手只能修改输入文本，无法直接访问或修改模型参数
+\item 对于\textbf{模型级攻击}（不在本文考虑范围）：若对手能访问gating网络权重（如开源模型），则 $\mathcal{A}_{\text{direct}} \supset \mathcal{S}_B$，此时MoE系统不再解耦
+\end{itemize}
+
+\textbf{本文假设}：对手\textbf{无法直接修改模型}，只能通过输入级释义攻击。在此假设下，MoE系统的信号空间（专家激活）与攻击空间（输入文本）解耦，而Token-Logit系统的信号空间与攻击空间重合。
 \end{definition}
 
 \begin{definition}[释义攻击的信息论建模]
 释义攻击 $\mathcal{P}$ 是一族变换 $P: X \to X'$ 满足：
 \begin{itemize}
-\item 语义保持：$\text{Meaning}(x) \approx \text{Meaning}(x')$
-\item 编辑距离约束：$\text{ED}(x, x') \leq L$
+\item \textbf{语义保持}：$\text{Meaning}(x) \approx \text{Meaning}(x')$，量化定义为：
+  \begin{equation}
+  \cos(\text{BERT}(x), \text{BERT}(x')) > \tau_{\text{semantic}}
+  \end{equation}
+  其中 $\tau_{\text{semantic}} \in [0.85, 0.95]$ 是语义相似度阈值（通常取0.85），$\text{BERT}(\cdot)$ 表示BERT编码器的输出向量
+\item \textbf{编辑距离约束}：$\text{ED}(x, x') \leq L$，其中 $L$ 是最大编辑距离（通常 $L \leq 5$ 对于短文本，或 $L \leq 0.1 \times |x|$ 对于长文本）
 \end{itemize}
 
 其\textbf{强度} $\gamma$ 定义为：
 \begin{equation}
 \gamma(\mathcal{P}) = \KL{D(X')}{D(X)}
 \end{equation}
-其中 $D(X')$ 是被攻击后的输入分布。
+其中 $D(X')$ 是被攻击后的输入分布，$D(X)$ 是原始输入分布。$\gamma$ 的单位是nats（自然对数单位）。
 \end{definition}
 
 \section{范式A（Token-Logit）的线性衰减定理}
@@ -154,6 +166,28 @@ Z_{\text{KGW}}^{H_1} &= \frac{\Expect[k] - N\gamma_G}{\sqrt{N\gamma_G(1-\gamma_G
 \end{equation}
 \end{corollary}
 
+\begin{lemma}[实际释义攻击模型的非均匀替换]
+设释义攻击采用基于paraphrase模型的替换（如GPT-3.5、T5、Pegasus）。
+令 $f(w) = \Prob(\text{词}w\text{被替换})$，$\theta = \text{编辑距离}/长度$。
+
+在非均匀替换下，被替换的绿名单词元期望为：
+\begin{equation}
+\begin{split}
+\Expect[\Delta Z] &= \sum_{w \in G} f(w) \cdot 1 + \sum_{w \notin G} f(w) \cdot 0 \\
+&= \sum_{w \in G, \text{freq}(w) < \text{median}} f(w) + O(\theta^2)
+\end{split}
+\end{equation}
+
+其中 $\text{freq}(w)$ 表示词 $w$ 在训练语料中的频率。
+
+\textbf{关键观察}：真实paraphrase模型倾向于替换低频词和风格词，而非均匀分布。因此存在修正项 $g(\theta)$ 使得：
+\begin{equation}
+\Expect[\Delta Z] = C_{\text{linear}} \cdot \gamma + g(\theta) \cdot \gamma^{3/2} + O(\gamma^2)
+\end{equation}
+
+其中 $g(\theta)$ 取决于替换集中度（可用Gini系数衡量）。当替换高度集中在低频词时，$g(\theta) > 0$，实际衰减可能略快于线性预测。
+\end{lemma}
+
 \begin{theorem}[Token-Logit范式下的线性衰减]
 对KGW范式，存在常数 $C_{\text{linear}}$ 使得：
 \begin{equation}
@@ -164,7 +198,7 @@ Z_{\text{KGW}}^{H_1} &= \frac{\Expect[k] - N\gamma_G}{\sqrt{N\gamma_G(1-\gamma_G
 
 \textbf{假设条件}：
 \begin{itemize}
-\item 攻击策略采用均匀词元替换，即被替换的词元在词汇表中均匀分布
+\item 攻击策略采用\textbf{均匀词元替换}，即被替换的词元在词汇表中均匀分布
 \item 攻击空间与信号空间完全重合（词元空间）
 \item 攻击强度通过KL散度 $\gamma = \KL{D(X')}{D(X)}$ 刻画
 \end{itemize}
@@ -177,7 +211,13 @@ Z_{\text{KGW}}^{H_1} &= \frac{\Expect[k] - N\gamma_G}{\sqrt{N\gamma_G(1-\gamma_G
 \item 因此 $\Delta Z \propto \gamma$ \qed
 \end{enumerate}
 
-\textbf{适用范围}：本定理适用于"最坏情况攻击"（对手最大化破坏水印）。若攻击策略引入语义保持但非均匀替换（如同义词替换集中在低频词），线性关系可能偏离，需引入修正项。
+\textbf{适用范围与局限性}：
+\begin{itemize}
+\item 本定理\textbf{仅适用于"最坏情况均匀攻击"}（对手最大化破坏水印且采用均匀替换策略）
+\item \textbf{不适用于真实paraphrase模型}（如GPT-3.5、T5、Pegasus），这些模型倾向于非均匀替换（集中在低频词和风格词）
+\item 对于真实paraphrase攻击，需参考引理2.2'，引入修正项 $g(\theta) \cdot \gamma^{3/2}$，实际衰减可能略快于线性预测
+\item 实验验证建议：在GPT-3.5 paraphrase下测量实际衰减曲线，与理论预测对比
+\end{itemize}
 \end{theorem}
 
 \begin{corollary}
@@ -243,12 +283,32 @@ Z_{\text{KGW}}^{H_1} &= \frac{\Expect[k] - N\gamma_G}{\sqrt{N\gamma_G(1-\gamma_G
 \KL{p_1}{p_0} = \epsilon
 \end{equation}
 
-通过Top-k softmax的性质，可以证明：
+\textbf{$\epsilon$ 与 $\Delta \ell$ 关系的推导}：
+
+对于softmax分布，$p_0(e|x) = \frac{\exp(\ell_0(e))}{\sum_{e'} \exp(\ell_0(e'))}$，$p_1(e|x) = \frac{\exp(\ell_0(e) + \Delta\ell(e))}{\sum_{e'} \exp(\ell_0(e') + \Delta\ell(e'))}$。
+
+当 $\|\Delta \ell\|_2$ 较小时，使用Taylor展开：
 \begin{equation}
-\epsilon \approx \frac{1}{2}\|\Delta \ell\|_2^2
+\begin{split}
+p_1(e|x) &\approx p_0(e|x) \left(1 + \Delta\ell(e) - \sum_{e'} p_0(e'|x) \Delta\ell(e')\right) \\
+&= p_0(e|x) \left(1 + \Delta\ell(e) - \Expect_{e' \sim p_0}[\Delta\ell(e')]\right)
+\end{split}
 \end{equation}
 
+因此KL散度：
+\begin{equation}
+\begin{split}
+\epsilon &= \KL{p_1}{p_0} = \sum_e p_1(e|x) \log \frac{p_1(e|x)}{p_0(e|x)} \\
+&\approx \sum_e p_0(e|x) \left(1 + \Delta\ell(e) - \Expect[\Delta\ell]\right) \left(\Delta\ell(e) - \Expect[\Delta\ell]\right) \\
+&= \Var_{e \sim p_0}[\Delta\ell(e)] \approx \frac{1}{2}\|\Delta \ell\|_2^2
+\end{split}
+\end{equation}
+
+其中最后一步利用了当 $\Delta\ell$ 较小时，方差近似等于 $\frac{1}{2}\|\Delta \ell\|_2^2$（在均匀先验下）。
+
 \textbf{关键性质}：$\epsilon$ 仅取决于logit修改的大小，\textbf{而非修改发生在哪个层}。
+
+\textbf{注意}：对于Top-k激活，由于离散性，上述近似在排名接近（logit差距小）时可能不准确，需考虑排名交叉的影响（见引理4.4'）。
 \end{definition}
 
 \section{核心定理——次线性衰减的严格证明}
@@ -327,6 +387,35 @@ $f(\lambda)$ 对分布参数 $p(x)$ 的偏导数为：
 因此 $C_{\text{stability}} \approx 1$。在高维分布中，$C_{\text{stability}}$ 可能略大于1，需通过实验标定。\qed
 \end{lemma}
 
+\subsection{离散激活分布的Pinsker推广}
+
+\begin{lemma}[离散激活分布的扰动界]
+对Top-k softmax激活模式 $S \in \{0,1\}^K$，定义：
+\begin{equation}
+p(S|x) = \text{softmax}([\ell_1(x), \ldots, \ell_K(x)])_{\text{top-k}}
+\end{equation}
+
+设 $\ell'(x) = \ell(x) + \Delta\ell(x)$，则激活概率变化满足：
+\begin{equation}
+|p(S|x') - p(S|x)| \leq f_k(S) \cdot \|\Delta\ell\|_2
+\end{equation}
+
+其中 $f_k(S)$ 是依赖于排名位置的系数：
+\begin{itemize}
+\item 若 $S$ 中的专家在排名中"稳定"（相对距离 $> \text{threshold}$），则 $f_k(S) \approx O(1)$
+\item 若排名接近（距离 $< \text{threshold}$），则 $f_k(S) \approx O(1/\text{gap})$，可能很大
+\end{itemize}
+
+\textbf{关键观察}：
+\begin{itemize}
+\item Top-k操作产生的激活分布是\textbf{离散的}，其对输入扰动的响应存在不连续性
+\item 当两个专家的logit差距很小时，微小的输入扰动可能导致排名交叉，激活模式发生突变
+\item 在最坏情况下（排名交叉），$L_g$ 可能显著大于理论假设值（如 $> 10$），需要实验标定
+\end{itemize}
+
+\textbf{对Pinsker不等式的适用性}：虽然Pinsker不等式通常针对连续分布，但对于离散激活模式，可以通过对激活概率分布（而非激活模式本身）应用Pinsker不等式，得到类似的上界。
+\end{lemma}
+
 \subsection{对抗释义攻击下的Chernoff信息衰减}
 
 \begin{theorem}[对抗鲁棒性的次线性衰减——核心定理]
@@ -350,21 +439,30 @@ $f(\lambda)$ 对分布参数 $p(x)$ 的偏导数为：
 
 \textbf{步骤2}：激活分布是输入分布的函数，$p_i(e) = \Expect_{x \sim D}[g_i(x, e)]$，其中 $g_i$ 是激活函数。
 
-由Lipschitz性质（gating网络的输出对输入变化有界），存在常数 $L_g$ 使得：
+\textbf{关键问题}：从分布函数差到激活分布差的跳跃需要严格处理。由于gating网络是 $\text{softmax}(\text{MLP}(x))$，其传播不能简单用Lipschitz常数刻画，特别是：
+\begin{itemize}
+\item Top-k操作产生的激活分布是\textbf{离散的}，存在不连续性（见引理4.4'）
+\item 当专家排名接近时，微小的输入扰动可能导致排名交叉，激活模式突变
+\end{itemize}
+
+\textbf{保守界}：假设gating网络对输入变化有Lipschitz性质，存在常数 $L_g$ 使得：
 \begin{equation}
 \|p'_i - p_i\|_{\text{TV}} \leq L_g \cdot \|D(X') - D(X)\|_{\text{TV}}
 \end{equation}
 
-\textbf{Lipschitz常数 $L_g$ 的界定}：
+\textbf{Lipschitz常数 $L_g$ 的界定与局限性}：
 \begin{equation}
 L_g = \sup_{x \neq x'} \frac{|\ell(x) - \ell(x')|_2}{|x - x'|_2}
 \end{equation}
 
-其中 $\ell(x)$ 是gating网络的logit向量。在实际MoE模型中，$L_g$ 可通过以下方法标定：
+其中 $\ell(x)$ 是gating网络的logit向量。
+
+\textbf{注意}：
 \begin{itemize}
-\item 对输入 $x$ 添加微小扰动 $\Delta x$，计算gating logits的变化
-\item 在验证集上取最大值或95\%分位数：$L_g \approx \max_x \frac{|\Delta \ell(x)|_2}{|\Delta x|_2}$
-\item 若 $L_g$ 显著大于理论假设（如 $> 10$），说明gating网络可能存在梯度爆炸，需要引入梯度裁剪或正则化
+\item 上述界是\textbf{保守的}，因为它忽略了Top-k离散性的影响
+\item 在实际MoE模型中，$L_g$ 必须通过实验标定（见第7.1节），不能仅凭理论假设
+\item 若 $L_g$ 显著大于理论假设（如 $> 10$），说明gating网络可能存在梯度爆炸，或存在排名交叉的极端情况
+\item 对于离散激活模式，建议使用引理4.4'中的 $f_k(S)$ 系数进行更精确的估计
 \end{itemize}
 
 \textbf{步骤3}：结合步骤1和2：
@@ -375,7 +473,7 @@ L_g = \sup_{x \neq x'} \frac{|\ell(x) - \ell(x')|_2}{|x - x'|_2}
 其中 $C_{\text{prop}} = L_g \sqrt{\frac{1}{2}}$ \qed
 \end{theorem}
 
-\begin{corollary}
+\begin{corollary}[对抗后的Chernoff信息下界]
 利用引理4.1，有
 \begin{equation}
 \begin{split}
@@ -390,6 +488,34 @@ L_g = \sup_{x \neq x'} \frac{|\ell(x) - \ell(x')|_2}{|x - x'|_2}
 \end{equation}
 
 其中 $C = C_{\text{stability}} \cdot C_{\text{prop}}$ 是综合常数。
+
+\textbf{紧界分析}：上述下界来自于\textbf{两次独立的松弛}，实际衰减可能更严重：
+
+\textbf{松弛1（Pinsker不等式）}：
+\begin{equation}
+\|D(X') - D(X)\|_{\text{TV}} \leq \sqrt{\frac{\gamma}{2}}
+\end{equation}
+
+松弛程度：通常是 $\sqrt{2}$ 倍的松弛。实际TV距离可通过Bhattacharyya系数得到更紧的界：
+\begin{equation}
+\|D(X') - D(X)\|_{\text{TV}} \leq \sqrt{1 - \exp(-2 \cdot \text{BC}(D(X'), D(X)))}
+\end{equation}
+
+其中Bhattacharyya系数 $\text{BC}(p, q) = \sum_x \sqrt{p(x)q(x)}$。
+
+\textbf{松弛2（Chernoff稳定性）}：
+\begin{equation}
+|\Dstar(p', q') - \Dstar(p,q)| \leq C_{\text{stability}} (\delta_p + \delta_q) \sqrt{\Dstar(p, q)}
+\end{equation}
+
+松弛程度：$C_{\text{stability}} = 1$ 的证明基于Hölder不等式，在高维情况下 $C_{\text{stability}}$ 的实际值需实验标定，可能略大于1。
+
+\textbf{数值示例}：当 $\gamma = 0.03$，$C = 1.5$，$d_0 = 0.1$ 时：
+\begin{equation}
+\Dstaradv \geq 0.1 - 1.5\sqrt{0.03 \times 0.1} = 0.1 - 0.082 = 0.018
+\end{equation}
+
+但考虑到两次松弛，实际衰减可能接近 $0.074/0.1 = 26\%$ 或更严重。需要实验验证理论预测与实测数据的gap。
 
 \textbf{这正是Theorem 5.1的严格数学形式。}
 \end{corollary}
@@ -500,13 +626,43 @@ n^*(\gamma, c) = \frac{\log(1/\delta)}{\Dstaradv} \geq \frac{\log(1/\delta)}{\ga
 \end{itemize}
 \end{theorem}
 
-\begin{corollary}
+\begin{corollary}[最优安全系数的显式形式]
 最优的安全系数满足：
 \begin{equation}
 c^* = \arg\min_c \left[ n^*(\gamma, c) + \lambda \Delta A(c) \right]
 \end{equation}
 
-其中 $\lambda$ 是性能成本的权重。通常 $c^* \in [C, 2.5C]$ 范围内。
+其中：
+\begin{itemize}
+\item \textbf{样本复杂度}：
+  \begin{equation}
+  n^*(\gamma, c) = \frac{\log(1/\delta)}{\gamma c(c - C)}
+  \end{equation}
+  
+\item \textbf{性能成本模型}：$\Delta A(c)$ 表示模型精度下降，显式形式为：
+  \begin{equation}
+  \Delta A(c) = a \cdot c^p + b \cdot c^q
+  \end{equation}
+  
+  其中参数 $a, b, p, q$ 由在验证集上的扫参实验决定。通常 $p \in [1, 2]$，$q \in [2, 3]$。
+  
+  \textbf{理论依据}：假设gating网络修改强度与 $c$ 线性关系：$\Delta\ell = c \cdot \Delta\ell_0$（$\Delta\ell_0$ 是某个基准修改）。模型精度下降应该是 $c$ 的增函数，低次项（$c^p$）主导小扰动，高次项（$c^q$）主导大扰动。
+
+\item \textbf{权重 $\lambda$ 的选择指南}：
+  \begin{center}
+  \begin{tabular}{lcc}
+  \toprule
+  应用场景 & 优先级 & 推荐 $\lambda$ \\
+  \midrule
+  严格保密（银行、军事） & 安全性 & $\lambda = 100-1000$（几乎无视性能） \\
+  内容验证（新闻、社交媒体） & 平衡 & $\lambda = 1-10$ \\
+  学术署名 & 灵活 & $\lambda = 0.1-1$（允许更多性能损失） \\
+  \bottomrule
+  \end{tabular}
+  \end{center}
+\end{itemize}
+
+\textbf{最优值范围}：通过理论分析和实验验证，通常 $c^* \in [C, 2.5C]$ 范围内。具体值取决于 $\lambda$、$\gamma$ 和模型规模（大模型对扰动的容忍度更强，可承受更大的 $c$ 值）。
 \end{corollary}
 
 \section{定量数值验证与预测}
