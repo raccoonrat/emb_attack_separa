@@ -1,0 +1,46 @@
+# LaTeX 编译产生的临时文件和日志
+*.log
+*.out
+*.aux
+*.fdb_latexmk
+*.fls
+*.synctex.gz
+*.synctex(busy)
+*.toc
+*.lof
+*.lot
+*.idx
+*.ilg
+*.ind
+*.bbl
+*.blg
+*.bcf
+*.run.xml
+*.auxlock
+*.nav
+*.snm
+*.vrb
+*.figlist
+*.makefile
+
+# LaTeX 编译中间文件
+*.dvi
+*.ps
+*.eps
+*.bak
+*.swp
+*~
+
+# 编辑器临时文件
+*.sublime-project
+*.sublime-workspace
+.DS_Store
+Thumbs.db
+
+# 保留源文件和最终输出
+# *.tex (保留)
+# *.sty (保留)
+# *.cls (保留)
+# *.pdf (保留，如果需要忽略PDF可以取消注释下面一行)
+# *.pdf
+
