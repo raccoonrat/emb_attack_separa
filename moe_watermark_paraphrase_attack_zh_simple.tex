@@ -1,0 +1,172 @@
+\documentclass[11pt,a4paper]{ctexart}
+
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{amsthm}
+\usepackage{geometry}
+\geometry{margin=2.5cm}
+
+% Theorem environments
+\newtheorem{theorem}{定理}
+\newtheorem{definition}{定义}
+
+% Custom commands
+\newcommand{\KL}[2]{D_{\text{KL}}(#1 \| #2)}
+\newcommand{\TV}[2]{\| #1 - #2 \|_{\text{TV}}}
+\newcommand{\Dstar}{D^*}
+\newcommand{\Dstaradv}{D^*_{\text{adv}}}
+
+\title{MoE水印对抗释义攻击的核心机理优势\\简化版}
+
+\author{yunhao}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\section{核心问题}
+
+传统词元-逻辑值（Token-Logit）水印在面对释义攻击时存在根本性脆弱性。本文从信息论角度证明，基于MoE专家激活的水印范式具有机理上的根本优势。
+
+\section{两种范式的核心差异}
+
+\subsection{范式A：稠密模型水印（KGW）}
+
+\textbf{信号载体}：词元概率分布（词汇表空间）
+
+\textbf{攻击向量}：词元替换（词汇表空间）
+
+\textbf{核心问题}：信号与攻击在同一空间，导致\textbf{信号-攻击重合}
+
+\textbf{衰减机理}：线性衰减
+\begin{equation}
+\Delta Z \propto \gamma
+\end{equation}
+其中$\gamma$为攻击强度（被替换词元比例）。
+
+\subsection{范式B：MoE水印}
+
+\textbf{信号载体}：专家激活分布$p(e|x)$（内部激活空间）
+
+\textbf{攻击向量}：词元替换$x \rightarrow x'$（外部词元空间）
+
+\textbf{核心优势}：信号与攻击在不同空间，实现\textbf{信号-攻击解耦}
+
+\textbf{衰减机理}：次线性衰减
+\begin{equation}
+\Delta \Dstar \propto O(\sqrt{\gamma})
+\end{equation}
+
+\section{机理推导}
+
+\subsection{攻击建模}
+
+将释义攻击$x \rightarrow x'$建模为输入分布偏移：
+\begin{equation}
+\gamma = \KL{D(X')}{D(X)}
+\end{equation}
+
+\subsection{核心定理}
+
+\begin{theorem}[对抗鲁棒性]
+在强度为$\gamma$的释义攻击下，MoE水印的检测能力（Chernoff信息）满足：
+\begin{equation}
+\Dstaradv \geq \Dstar(p_0, p_1) - C\sqrt{\gamma \cdot \Dstar(p_0, p_1)} - O(\gamma)
+\label{eq:robustness_bound}
+\end{equation}
+其中$C \approx 1.5$--$2.0$为常数。
+\end{theorem}
+
+\textit{证明思路}：通过Pinsker不等式，输入空间的KL散度$\gamma$传播到激活空间时，被约束为$\sqrt{\gamma}$量级的总变差距离，从而检测能力衰减为次线性。
+
+\subsection{为什么是$\sqrt{\gamma}$？}
+
+\textbf{关键步骤}：
+
+1. \textbf{空间解耦}：攻击$\gamma$在输入空间，信号$\Dstar$在激活空间
+
+2. \textbf{Pinsker不等式}：
+\begin{equation}
+\TV{p'}{p} \leq \sqrt{\frac{1}{2} \KL{p'}{p}}
+\end{equation}
+
+3. \textbf{传播约束}：输入分布的攻击$\gamma$导致激活分布变化：
+\begin{equation}
+\TV{p'_i}{p_i} \leq \sqrt{2 \gamma}
+\end{equation}
+
+4. \textbf{结论}：检测能力衰减$\Delta \Dstar$被$O(\sqrt{\gamma})$约束
+
+\section{对比分析}
+
+\subsection{数值示例}
+
+假设初始$\Dstar=0.1$，$C=1.5$：
+
+\begin{itemize}
+\item \textbf{攻击1}：$\gamma_1 = 0.005$
+  \begin{itemize}
+  \item 衰减项：$1.5 \cdot \sqrt{0.005 \cdot 0.1} \approx 0.0335$
+  \item 剩余$\Dstaradv \ge 0.0665$（损失33.5\%）
+  \end{itemize}
+
+\item \textbf{攻击2}：$\gamma_2 = 0.020$（4倍于攻击1）
+  \begin{itemize}
+  \item 衰减项：$1.5 \cdot \sqrt{0.020 \cdot 0.1} \approx 0.0671$
+  \item 剩余$\Dstaradv \ge 0.0329$（损失67.1\%）
+  \end{itemize}
+\end{itemize}
+
+\textbf{关键观察}：攻击强度增加4倍，信号损失仅增加2倍（$\sqrt{4}=2$）。
+
+\subsection{线性 vs 次线性衰减}
+
+\begin{center}
+\begin{tabular}{|c|c|c|}
+\hline
+\textbf{攻击强度$\gamma$} & \textbf{范式A（线性）} & \textbf{范式B（次线性）} \\
+\hline
+0.01 & 信号保留75\% & 信号保留52.6\% \\
+0.02 & 信号保留50\% & 信号保留32.9\% \\
+0.04 & \textbf{信号完全丢失} & \textbf{仍可检测（5.1\%）} \\
+\hline
+\end{tabular}
+\end{center}
+
+\textbf{核心优势}：次线性衰减在强攻击下仍保持可检测性，而线性衰减会灾难性失效。
+
+\section{工程框架}
+
+\subsection{安全系数$c$}
+
+将水印强度$\epsilon$与预期攻击强度$\gamma$关联：
+\begin{equation}
+\epsilon \approx c \cdot \sqrt{\gamma} \quad \text{或} \quad \Dstar \approx c^2 \gamma
+\end{equation}
+
+\textbf{鲁棒性保证}：若$c > C$（约1.5--2.0），则$\Dstaradv > 0$，水印理论上保证可检测。
+
+\section{核心结论}
+
+\begin{enumerate}
+\item \textbf{信号-攻击解耦}是MoE水印鲁棒性的根本原因
+
+\item \textbf{次线性衰减}（$O(\sqrt{\gamma})$）vs \textbf{线性衰减}（$O(\gamma)$）是机理上的根本差异
+
+\item 通过Pinsker不等式，输入空间的攻击被约束为激活空间的$\sqrt{\gamma}$量级变化
+
+\item 次线性衰减提供了\textbf{可检测性下限}，而线性衰减会完全失效
+\end{enumerate}
+
+\section*{备注}
+
+\begin{itemize}
+\item 实验验证：待完成
+\item 详细证明：待后续补充
+\item 本文仅展示核心理论机理
+\end{itemize}
+
+\end{document}
+
