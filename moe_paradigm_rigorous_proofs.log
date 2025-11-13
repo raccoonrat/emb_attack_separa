@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999995 (TeX Live 2023) (preloaded format=xelatex 2025.5.20)  13 NOV 2025 14:30
+This is XeTeX, Version 3.141592653-2.6-0.999995 (TeX Live 2023) (preloaded format=xelatex 2025.5.20)  13 NOV 2025 14:36
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -732,8 +732,8 @@ LaTeX Font Info:    Font shape `TU/SimSun(0)/m/sl' in size <10.95> not availabl
 e
 (Font)              Font shape `TU/SimSun(0)/m/it' tried instead on input line 
 128.
- [2] [3]
-Overfull \hbox (44.82248pt too wide) in paragraph at lines 231--232
+ [2] [3] [4]
+Overfull \hbox (44.82248pt too wide) in paragraph at lines 255--256
 [][]\TU/SimSun(0)/b/n/10.95 定 理 \TU/lmr/bx/n/10.95 4.4 \TU/lmr/m/n/10.95 (\TU/S
 imSun(0)/m/n/10.95 对 抗 鲁 棒 性 的 次 线 性 衰 减  |— —|  核 心 定 理\TU/lmr/m/n/10.95 )\TU/
 lmr/bx/n/10.95 . []\TU/SimSun(0)/m/it/10.95 在 释 义 攻 击 $\OMS/cmsy/m/n/10.95 P \O
@@ -744,30 +744,78 @@ r/m/n/10.95 )\OMS/cmsy/m/n/10.95 k\OML/cmm/m/it/10.95 D\OT1/cmr/m/n/10.95 (\OML
 /cmm/m/it/10.95 X\OT1/cmr/m/n/10.95 )) =
  []
 
-[4] [5]
+[5] [6]
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 295.
+(hyperref)                removing `math shift' on input line 329.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 295.
+(hyperref)                removing `math shift' on input line 329.
 
-[6] [7] [8] (./moe_paradigm_rigorous_proofs.aux)
+[7] [8]
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 435.
+
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `subscript' on input line 435.
+
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 435.
+
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 458.
+
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 458.
+
+[9]
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 473.
+
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 473.
+
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 495.
+
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `\gamma' on input line 495.
+
+
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 495.
+
+[10] [11] (./moe_paradigm_rigorous_proofs.aux)
 
 LaTeX Font Warning: Some font shapes were not available, defaults substituted.
 
-Package rerunfilecheck Info: File `moe_paradigm_rigorous_proofs.out' has not ch
-anged.
-(rerunfilecheck)             Checksum: 13A2D4226620CC3052A18C83ACBCD804;2955.
+
+Package rerunfilecheck Warning: File `moe_paradigm_rigorous_proofs.out' has cha
+nged.
+(rerunfilecheck)                Rerun to get outlines right
+(rerunfilecheck)                or use package `bookmark'.
+
+Package rerunfilecheck Info: Checksums for `moe_paradigm_rigorous_proofs.out':
+(rerunfilecheck)             Before: 13A2D4226620CC3052A18C83ACBCD804;2955
+(rerunfilecheck)             After:  E4A6E868818731E3E54CE6D208AA2DAF;3648.
  ) 
 Here is how much of TeX's memory you used:
- 18320 strings out of 476683
- 404334 string characters out of 5807575
+ 18377 strings out of 476683
+ 408028 string characters out of 5807575
  1868012 words of memory out of 5000000
- 38298 multiletter control sequences out of 15000+600000
+ 38355 multiletter control sequences out of 15000+600000
  524014 words of font info for 109 fonts, out of 8000000 for 9000
  1348 hyphenation exceptions out of 8191
- 89i,7n,97p,396b,445s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 89i,7n,97p,396b,447s stack positions out of 10000i,1000n,20000p,200000b,200000s
 
-Output written on moe_paradigm_rigorous_proofs.pdf (8 pages).
+Output written on moe_paradigm_rigorous_proofs.pdf (11 pages).
