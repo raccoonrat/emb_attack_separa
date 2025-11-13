@@ -1,4 +1,4 @@
-This is XeTeX, Version 3.141592653-2.6-0.999995 (TeX Live 2023) (preloaded format=xelatex 2025.5.20)  13 NOV 2025 16:10
+This is XeTeX, Version 3.141592653-2.6-0.999995 (TeX Live 2023) (preloaded format=xelatex 2025.5.20)  13 NOV 2025 16:17
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1002,78 +1002,33 @@ LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
 (Font)              using `TU/ptm/m/it' instead on input line 1125.
 
 [10]
-Overfull \hbox (97.3128pt too wide) in paragraph at lines 1183--1183
-[]\TU/FangSong(0)/m/n/10 输入：| 验证集 \TU/pcr/m/n/10 $\mathcal{D} = \{x_i\}_{i=1}^N
-$\TU/FangSong(0)/m/n/10 ，| 扰动参数 \TU/pcr/m/n/10 $\varepsilon$[] 
- []
 
-
-Overfull \hbox (38.48592pt too wide) in paragraph at lines 1183--1183
-[]\TU/FangSong(0)/m/n/10 输出：| \TU/pcr/m/n/10 $L_g^{\max}$, $L_g^{0.95}$, $L_g^{
-\text{mean}}$[] 
- []
-
-
-Overfull \hbox (21.65623pt too wide) in paragraph at lines 1183--1183
-[]\TU/pcr/m/n/10 3.     $\mathbf{e}_i$ = embed($x_i$)  // \TU/FangSong(0)/m/n/1
-0 获取\TU/pcr/m/n/10 embedding[] 
- []
-
-
-Overfull \hbox (184.51624pt too wide) in paragraph at lines 1183--1183
-[]\TU/pcr/m/n/10 4.     $\mathbf{e}_i’$ = $\mathbf{e}_i$ + $\varepsilon \cdot \
-mathcal{N}(0, I)$  // \TU/FangSong(0)/m/n/10 添加噪声[] 
- []
-
-
-Overfull \hbox (1.37624pt too wide) in paragraph at lines 1183--1183
-[]\TU/pcr/m/n/10 5.     $x_i’$ = decode($\mathbf{e}_i’$)  // \TU/FangSong(0)/m/
-n/10 重新编码[] 
- []
-
-
-Overfull \hbox (3.40625pt too wide) in paragraph at lines 1183--1183
-[]\TU/pcr/m/n/10 6.     $\ell_i$ = gating_network($x_i$)  // \TU/FangSong(0)/m/
-n/10 计算\TU/pcr/m/n/10 logits[] 
- []
-
-
-Underfull \hbox (badness 4001) in paragraph at lines 1183--1183
-[]\TU/pcr/m/n/10 9.     $\Delta x_i$ = ||$\mathbf{e}_i -
- []
-
-
-Overfull \hbox (58.81624pt too wide) in paragraph at lines 1183--1183
-[]\TU/pcr/m/n/10 15. return $L_g^{\max}$, $L_g^{0.95}$, $L_g^{\text{mean}}$[] 
- []
+Package hyperref Warning: Token not allowed in a PDF string (Unicode):
+(hyperref)                removing `math shift' on input line 1189.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 1187.
+(hyperref)                removing `math shift' on input line 1189.
 
 
-Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 1187.
-
-
-Underfull \hbox (badness 2735) in paragraph at lines 1191--1192
+Underfull \hbox (badness 2735) in paragraph at lines 1193--1194
 []\TU/SimSun(0)/b/n/10 生 成 释 义 攻 击 样 本\TU/SimSun(0)/m/n/10 ：|  对 验 证 集 样 本 生 成
  []
 
 
-Underfull \hbox (badness 3568) in paragraph at lines 1191--1192
-\TU/pcr/m/n/10 paraphrase \TU/SimSun(0)/m/n/10 版 本，|  测 量 \TU/pcr/m/n/10 KL \TU
-/SimSun(0)/m/n/10 扰 动 $\OML/cmm/m/it/10 ^^M[] \OT1/cmr/m/n/10 =
+Underfull \hbox (badness 3568) in paragraph at lines 1193--1194
+\TU/ptm/b/it/10 paraphrase \TU/SimSun(0)/m/n/10 版 本，|  测 量 \TU/ptm/b/it/10 KL \
+TU/SimSun(0)/m/n/10 扰 动 $\OML/cmm/m/it/10 ^^M[] \OT1/cmr/m/n/10 =
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1197--1198
-[]\TU/SimSun(0)/m/n/10 计 算 \TU/pcr/m/n/10 KL \TU/SimSun(0)/m/n/10 扰 动 强 度：| $\O
-ML/cmm/m/it/10 ^^M[] \OT1/cmr/m/n/10 =
+Underfull \hbox (badness 10000) in paragraph at lines 1199--1200
+[]\TU/SimSun(0)/m/n/10 计 算 \TU/ptm/b/it/10 KL \TU/SimSun(0)/m/n/10 扰 动 强 度：| $\
+OML/cmm/m/it/10 ^^M[] \OT1/cmr/m/n/10 =
  []
 
 
-Underfull \hbox (badness 5119) in paragraph at lines 1197--1198
+Underfull \hbox (badness 5119) in paragraph at lines 1199--1200
 \OML/cmm/m/it/10 D[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 D\OT1/cmr/m/n/10 (\OML/cm
 m/m/it/10 x[]\OT1/cmr/m/n/10 )\OMS/cmsy/m/n/10 jj\OML/cmm/m/it/10 D\OT1/cmr/m/n
 /10 (\OML/cmm/m/it/10 x[]\OT1/cmr/m/n/10 ))$\TU/SimSun(0)/m/n/10 ，|  其 中 $\OML/
@@ -1082,7 +1037,7 @@ cmm/m/it/10 D\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 x\OT1/cmr/m/n/10 )$ \TU/SimSun(0
  []
 
 
-Overfull \hbox (36.14896pt too wide) detected at line 1204
+Overfull \hbox (36.14896pt too wide) detected at line 1206
 [][][]\OML/cmm/m/it/10 ^^N[] \OT1/cmr/m/n/10 = \OMS/cmsy/m/n/10 k\OML/cmm/m/it/
 10 p\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 e\OMS/cmsy/m/n/10 j\OML/cmm/m/it/10 x[]\O
 T1/cmr/m/n/10 ) \OMS/cmsy/m/n/10 ^^@ \OML/cmm/m/it/10 p\OT1/cmr/m/n/10 (\OML/cm
@@ -1094,7 +1049,7 @@ n/10 (\OML/cmm/m/it/10 e\OMS/cmsy/m/n/10 j\OML/cmm/m/it/10 x[]\OT1/cmr/m/n/10 )
  []
 
 
-Overfull \hbox (46.40166pt too wide) detected at line 1210
+Overfull \hbox (46.40166pt too wide) detected at line 1212
 [][][]\OML/cmm/m/it/10 ^^N[] \OT1/cmr/m/n/10 = \OMS/cmsy/m/n/10 k\OML/cmm/m/it/
 10 P\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 S\OMS/cmsy/m/n/10 j\OML/cmm/m/it/10 x[]\O
 T1/cmr/m/n/10 ) \OMS/cmsy/m/n/10 ^^@ \OML/cmm/m/it/10 P\OT1/cmr/m/n/10 (\OML/cm
@@ -1106,11 +1061,7 @@ sy/m/n/10 j\OML/cmm/m/it/10 x[]\OT1/cmr/m/n/10 )\OMS/cmsy/m/n/10 j
  []
 
 
-LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 1230.
-
-[11]
-Overfull \hbox (11.83698pt too wide) detected at line 1238
+Overfull \hbox (11.83698pt too wide) detected at line 1240
 [][][]\OMS/cmsy/m/n/10 j\OML/cmm/m/it/10 D[]\OT1/cmr/m/n/10 (\OML/cmm/m/it/10 p
 []; q[]\OT1/cmr/m/n/10 ) \OMS/cmsy/m/n/10 ^^@ \OML/cmm/m/it/10 D[]\OT1/cmr/m/n/
 10 (\OML/cmm/m/it/10 p; q\OT1/cmr/m/n/10 )\OMS/cmsy/m/n/10 j ^^Y \OML/cmm/m/it/
@@ -1119,198 +1070,110 @@ Overfull \hbox (11.83698pt too wide) detected at line 1238
  []
 
 
-Overfull \hbox (83.32281pt too wide) in paragraph at lines 1273--1273
-[]\TU/FangSong(0)/m/n/10 输入：| 验证集 \TU/pcr/m/n/10 $\mathcal{D} = \{x_i\}_{i=1}^N
-$\TU/FangSong(0)/m/n/10 ，| \TU/pcr/m/n/10 paraphrase\TU/FangSong(0)/m/n/10 函数 \
-TU/pcr/m/n/10 $P$[] 
+LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
+(Font)              using `TU/ptm/m/it' instead on input line 1240.
+
+[11]
+Overfull \hbox (22.45224pt too wide) in paragraph at lines 1276--1276
+[]\TU/ptm/b/n/8 13. C_prop, R_squared = robust_regression(sqrt_gammas, deltas)[
+] 
  []
 
 
-Overfull \hbox (15.65593pt too wide) in paragraph at lines 1273--1273
-[]\TU/FangSong(0)/m/n/10 输出：| \TU/pcr/m/n/10 $C_{\text{prop}}$, $C_{\text{stabi
-lity}}$, $C$[] 
+Overfull \hbox (48.56424pt too wide) in paragraph at lines 1276--1276
+[]\TU/ptm/b/n/8 19.     D_star_i_prime = compute_chernoff_info(p_i_prime, q_i_p
+rime)[] 
  []
 
 
-Overfull \hbox (34.73624pt too wide) in paragraph at lines 1273--1273
-[]\TU/pcr/m/n/10 4.     $\gamma_i$ = compute_kl_divergence($x_i$, $x_i’$)[] 
+Underfull \hbox (badness 5475) in paragraph at lines 1276--1276
+[]\TU/ptm/b/n/8 20.     chernoff_diffs.append(abs(D_star_i_prime -
  []
 
 
-Overfull \hbox (17.54623pt too wide) in paragraph at lines 1273--1273
-[]\TU/pcr/m/n/10 5.     $p_i$ = compute_activation_dist($x_i$)  // \TU/FangSong
-(0)/m/n/10 方式\TU/pcr/m/n/10 1[] 
- []
-
-
-Overfull \hbox (98.38625pt too wide) in paragraph at lines 1273--1273
-[]\TU/pcr/m/n/10 13. $C_{\text{prop}}$, $R^2$ = robust_regression(sqrt_gammas, 
-deltas)[] 
- []
-
-
-Overfull \hbox (10.44624pt too wide) in paragraph at lines 1273--1273
-[]\TU/pcr/m/n/10 18.     $D*_i$ = compute_chernoff_info($p_i$, $q_i$)[] 
- []
-
-
-Overfull \hbox (18.78624pt too wide) in paragraph at lines 1273--1273
-[]\TU/pcr/m/n/10 19.     $D*_i’$ = compute_chernoff_info($p_i’$, $q_i’$)[] 
- []
-
-
-Overfull \hbox (99.75624pt too wide) in paragraph at lines 1273--1273
-[]\TU/pcr/m/n/10 21. $C_{\text{stability}}$ = fit_stability_constant(deltas, ch
-ernoff_diffs)[] 
- []
-
-
-Overfull \hbox (27.02625pt too wide) in paragraph at lines 1273--1273
-[]\TU/pcr/m/n/10 23. $C$ = $C_{\text{stability}} \cdot C_{\text{prop}}$[] 
- []
-
-
-Overfull \hbox (35.98625pt too wide) in paragraph at lines 1273--1273
-[]\TU/pcr/m/n/10 24. return $C_{\text{prop}}$, $C_{\text{stability}}$, $C$[] 
+Overfull \hbox (6.14024pt too wide) in paragraph at lines 1276--1276
+[]\TU/ptm/b/n/8 21. C_stability = fit_stability_constant(deltas, chernoff_diffs
+)[] 
  []
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 1277.
+(hyperref)                removing `math shift' on input line 1281.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 1277.
+(hyperref)                removing `math shift' on input line 1281.
+
+
+Overfull \hbox (4.94028pt too wide) in paragraph at lines 1399--1399
+[]\TU/ptm/b/n/8 Input: validation set D, attack strength gamma, weight lambda,[
+] 
+ []
 
 
 LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 1342.
+(Font)              using `TU/ptm/m/it' instead on input line 1399.
 
 [12]
-Overfull \hbox (148.30655pt too wide) in paragraph at lines 1393--1393
-[]\TU/FangSong(0)/m/n/10 输入：| 验证集 \TU/pcr/m/n/10 $\mathcal{D}$\TU/FangSong(0)/m
-/n/10 ，| 攻击强度 \TU/pcr/m/n/10 $\gamma$\TU/FangSong(0)/m/n/10 ，| 权重 \TU/pcr/m/n/1
-0 $\lambda$\TU/FangSong(0)/m/n/10 ，| 检测精度 \TU/pcr/m/n/10 $\delta$[] 
+Underfull \hbox (badness 10000) in paragraph at lines 1399--1399
+[]\TU/ptm/b/n/8 25. c_fine = [c_star-0.4, c_star-
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 1393--1393
-[]\TU/pcr/m/n/10 2. $c_{\text{scan}}$ = [C-0.2, C-
+Underfull \hbox (badness 10000) in paragraph at lines 1399--1399
+[]\TU/ptm/b/n/8 34. c_precise = [c_star-0.1, c_star-
  []
 
 
-Overfull \hbox (97.65625pt too wide) in paragraph at lines 1393--1393
-[]\TU/pcr/m/n/10 6.     $\Delta A(c)$ = measure_performance_degradation($\mathc
-al{D}$)[] 
- []
+Underfull \vbox (badness 2884) has occurred while \output is active []
 
-
-Overfull \hbox (86.89624pt too wide) in paragraph at lines 1393--1393
-[]\TU/pcr/m/n/10 8. $a, b, p, q$ = fit_polynomial($c_{\text{scan}}$, performanc
-e_costs)[] 
- []
-
-
-Overfull \hbox (25.89624pt too wide) in paragraph at lines 1393--1393
-[]\TU/pcr/m/n/10 16. $c_{\text{coarse}}$ = [C, C+0.2, ..., 2.5C]  // \TU/FangSo
-ng(0)/m/n/10 步长\TU/pcr/m/n/10 0.2[] 
- []
-
-
-Overfull \hbox (43.57626pt too wide) in paragraph at lines 1393--1393
-[]\TU/pcr/m/n/10 18.     $n^*(c)$ = log(1/$\delta$) / ($\gamma \cdot c \cdot (c
--
- []
-
-
-Overfull \hbox (25.95624pt too wide) in paragraph at lines 1393--1393
-[]\TU/pcr/m/n/10 19.     objective = $n^*(c)$ + $\lambda \cdot \Delta A(c)$[] 
- []
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 1393--1393
-[]\TU/pcr/m/n/10 25. $c_{\text{fine}}$ = [$c^*$-0.4, $c^*$-
- []
-
-
-Overfull \hbox (43.57626pt too wide) in paragraph at lines 1393--1393
-[]\TU/pcr/m/n/10 27.     $n^*(c)$ = log(1/$\delta$) / ($\gamma \cdot c \cdot (c
--
- []
-
-
-Overfull \hbox (25.95624pt too wide) in paragraph at lines 1393--1393
-[]\TU/pcr/m/n/10 28.     objective = $n^*(c)$ + $\lambda \cdot \Delta A(c)$[] 
- []
-
-
-Underfull \hbox (badness 4108) in paragraph at lines 1393--1393
-[]\TU/pcr/m/n/10 34. $c_{\text{precise}}$ = [$c^*$-0.1, $c^*$-
- []
-
-
-Overfull \hbox (43.57626pt too wide) in paragraph at lines 1393--1393
-[]\TU/pcr/m/n/10 36.     $n^*(c)$ = log(1/$\delta$) / ($\gamma \cdot c \cdot (c
--
- []
-
-
-Overfull \hbox (25.95624pt too wide) in paragraph at lines 1393--1393
-[]\TU/pcr/m/n/10 37.     objective = $n^*(c)$ + $\lambda \cdot \Delta A(c)$[] 
- []
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 1426.
+(hyperref)                removing `math shift' on input line 1433.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `\gamma' on input line 1426.
+(hyperref)                removing `\gamma' on input line 1433.
 
 
 Package hyperref Warning: Token not allowed in a PDF string (Unicode):
-(hyperref)                removing `math shift' on input line 1426.
+(hyperref)                removing `math shift' on input line 1433.
 
 
-Overfull \hbox (27.33736pt too wide) detected at line 1458
+Overfull \hbox (27.33736pt too wide) detected at line 1465
 [][][]\OML/cmm/m/it/10 ^^M[] \OMS/cmsy/m/n/10 ^^Y [] ^^A [] [] ^^Y \OT1/cmr/m/n
 /10 0\OML/cmm/m/it/10 :\OT1/cmr/m/n/10 05 \OMS/cmsy/m/n/10 ^^A []\OT1/cmr/m/n/1
 0 (12800) \OMS/cmsy/m/n/10 ^^Y \OT1/cmr/m/n/10 0\OML/cmm/m/it/10 :\OT1/cmr/m/n/
 10 04[]
  []
 
-
-LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 1458.
-
-[13]
 Missing character: There is no ✓ (U+2713) in font [lmroman10-regular]:mapping=t
 ex-text;!
 
 LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
-(Font)              using `TU/ptm/m/it' instead on input line 1522.
+(Font)              using `TU/ptm/m/it' instead on input line 1484.
+
+[13]
+
+LaTeX Font Warning: Font shape `TU/ptm/m/sl' undefined
+(Font)              using `TU/ptm/m/it' instead on input line 1529.
 
 [14] (./moe_paradigm_rigorous_proofs.aux)
 
 LaTeX Font Warning: Some font shapes were not available, defaults substituted.
 
-
-Package rerunfilecheck Warning: File `moe_paradigm_rigorous_proofs.out' has cha
-nged.
-(rerunfilecheck)                Rerun to get outlines right
-(rerunfilecheck)                or use package `bookmark'.
-
-Package rerunfilecheck Info: Checksums for `moe_paradigm_rigorous_proofs.out':
-(rerunfilecheck)             Before: 9729F3F8989E016D8D91C64BFE6D3289;3813
-(rerunfilecheck)             After:  72A44459E4ED2EE20F53165580F3DEDA;5668.
+Package rerunfilecheck Info: File `moe_paradigm_rigorous_proofs.out' has not ch
+anged.
+(rerunfilecheck)             Checksum: 72A44459E4ED2EE20F53165580F3DEDA;5668.
  ) 
 Here is how much of TeX's memory you used:
- 17241 strings out of 476683
- 394125 string characters out of 5807575
+ 17196 strings out of 476683
+ 391132 string characters out of 5807575
  1885012 words of memory out of 5000000
- 37231 multiletter control sequences out of 15000+600000
- 522450 words of font info for 101 fonts, out of 8000000 for 9000
+ 37187 multiletter control sequences out of 15000+600000
+ 522442 words of font info for 100 fonts, out of 8000000 for 9000
  1348 hyphenation exceptions out of 8191
- 89i,22n,97p,396b,582s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 89i,22n,97p,396b,583s stack positions out of 10000i,1000n,20000p,200000b,200000s
 
 Output written on moe_paradigm_rigorous_proofs.pdf (14 pages).

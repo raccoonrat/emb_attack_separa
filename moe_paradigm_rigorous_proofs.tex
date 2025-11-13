@@ -1160,27 +1160,29 @@ $c$ & $n*(\gamma,c)$ @ $\gamma=0.03$ & $\Delta A(c)$ (PPL) & \textbf{目标函�
 \end{enumerate}
 
 \textbf{算法伪代码}：
+{\footnotesize
 \begin{verbatim}
-算法1：Lipschitz常数 $L_g$ 的标定
-输入：验证集 $\mathcal{D} = \{x_i\}_{i=1}^N$，扰动参数 $\varepsilon$
-输出：$L_g^{\max}$, $L_g^{0.95}$, $L_g^{\text{mean}}$
+Algorithm 1: Calibrate Lipschitz constant L_g
+Input: validation set D, perturbation epsilon
+Output: L_g_max, L_g_095, L_g_mean
 
 1. ratios = []
-2. for each $x_i \in \mathcal{D}$:
-3.     $\mathbf{e}_i$ = embed($x_i$)  // 获取embedding
-4.     $\mathbf{e}_i'$ = $\mathbf{e}_i$ + $\varepsilon \cdot \mathcal{N}(0, I)$  // 添加噪声
-5.     $x_i'$ = decode($\mathbf{e}_i'$)  // 重新编码
-6.     $\ell_i$ = gating_network($x_i$)  // 计算logits
-7.     $\ell_i'$ = gating_network($x_i'$)
-8.     $\Delta \ell_i$ = ||$\ell_i - \ell_i'$||$_2$
-9.     $\Delta x_i$ = ||$\mathbf{e}_i - \mathbf{e}_i'$||$_2$
-10.    if $\Delta x_i > 0$:
-11.        ratios.append($\Delta \ell_i / \Delta x_i$)
-12. $L_g^{\max}$ = max(ratios)
-13. $L_g^{0.95}$ = percentile(ratios, 95)
-14. $L_g^{\text{mean}}$ = mean(ratios)
-15. return $L_g^{\max}$, $L_g^{0.95}$, $L_g^{\text{mean}}$
+2. for each x_i in D:
+3.     e_i = embed(x_i)                    // Get embedding
+4.     e_i_prime = e_i + epsilon * N(0,I)  // Add noise
+5.     x_i_prime = decode(e_i_prime)       // Re-encode
+6.     l_i = gating_network(x_i)           // Compute logits
+7.     l_i_prime = gating_network(x_i_prime)
+8.     delta_l_i = norm(l_i - l_i_prime)
+9.     delta_x_i = norm(e_i - e_i_prime)
+10.    if delta_x_i > 0:
+11.        ratios.append(delta_l_i / delta_x_i)
+12. L_g_max = max(ratios)
+13. L_g_095 = percentile(ratios, 95)
+14. L_g_mean = mean(ratios)
+15. return L_g_max, L_g_095, L_g_mean
 \end{verbatim}
+}
 
 \textbf{验证标准}：若 $L_g^{\max}$ 或 $L_g^{0.95}$ 显著大于理论假设（如 $> 10$），说明gating网络在高维空间可能存在梯度爆炸，需要引入梯度裁剪、权重正则化（如spectral norm）或输入归一化。
 
@@ -1241,36 +1243,38 @@ $c$ & $n*(\gamma,c)$ @ $\gamma=0.03$ & $\Delta A(c)$ (PPL) & \textbf{目标函�
 \end{enumerate}
 
 \textbf{算法伪代码}：
+{\footnotesize
 \begin{verbatim}
-算法2：综合常数 $C$ 的标定
-输入：验证集 $\mathcal{D} = \{x_i\}_{i=1}^N$，paraphrase函数 $P$
-输出：$C_{\text{prop}}$, $C_{\text{stability}}$, $C$
+Algorithm 2: Calibrate composite constant C
+Input: validation set D, paraphrase function P
+Output: C_prop, C_stability, C
 
 1. gammas = [], deltas = []
-2. for each $x_i \in \mathcal{D}$:
-3.     $x_i'$ = $P(x_i)$  // 生成paraphrase
-4.     $\gamma_i$ = compute_kl_divergence($x_i$, $x_i'$)
-5.     $p_i$ = compute_activation_dist($x_i$)  // 方式1
-6.     $p_i'$ = compute_activation_dist($x_i'$)
-7.     $\delta_i$ = TV_distance($p_i$, $p_i'$)
-8.     gammas.append($\gamma_i$)
-9.     deltas.append($\delta_i$)
+2. for each x_i in D:
+3.     x_i_prime = P(x_i)                    // Generate paraphrase
+4.     gamma_i = compute_kl_divergence(x_i, x_i_prime)
+5.     p_i = compute_activation_dist(x_i)    // Method 1
+6.     p_i_prime = compute_activation_dist(x_i_prime)
+7.     delta_i = TV_distance(p_i, p_i_prime)
+8.     gammas.append(gamma_i)
+9.     deltas.append(delta_i)
 10. 
-11. // 健壮回归
+11. // Robust regression
 12. sqrt_gammas = sqrt(gammas)
-13. $C_{\text{prop}}$, $R^2$ = robust_regression(sqrt_gammas, deltas)
+13. C_prop, R_squared = robust_regression(sqrt_gammas, deltas)
 14. 
-15. // 拟合 $C_{\text{stability}}$
+15. // Fit C_stability
 16. chernoff_diffs = []
-17. for each $(x_i, x_i')$:
-18.     $D*_i$ = compute_chernoff_info($p_i$, $q_i$)
-19.     $D*_i'$ = compute_chernoff_info($p_i'$, $q_i'$)
-20.     chernoff_diffs.append(|$D*_i' - D*_i$|)
-21. $C_{\text{stability}}$ = fit_stability_constant(deltas, chernoff_diffs)
+17. for each (x_i, x_i_prime):
+18.     D_star_i = compute_chernoff_info(p_i, q_i)
+19.     D_star_i_prime = compute_chernoff_info(p_i_prime, q_i_prime)
+20.     chernoff_diffs.append(abs(D_star_i_prime - D_star_i))
+21. C_stability = fit_stability_constant(deltas, chernoff_diffs)
 22. 
-23. $C$ = $C_{\text{stability}} \cdot C_{\text{prop}}$
-24. return $C_{\text{prop}}$, $C_{\text{stability}}$, $C$
+23. C = C_stability * C_prop
+24. return C_prop, C_stability, C
 \end{verbatim}
+}
 
 \textbf{经验值}：在LLaMA-MoE模型上，$C \approx 1.5 - 2.0$。
 
@@ -1343,54 +1347,57 @@ n^*(\gamma, c) = \frac{\log(1/\delta)}{\gamma c(c - C)}
 \end{itemize}
 
 \textbf{算法伪代码}：
+{\footnotesize
 \begin{verbatim}
-算法3：安全系数 $c$ 的最优标定
-输入：验证集 $\mathcal{D}$，攻击强度 $\gamma$，权重 $\lambda$，检测精度 $\delta$
-输出：最优安全系数 $c^*$
+Algorithm 3: Optimal calibration of safety coefficient c
+Input: validation set D, attack strength gamma, weight lambda,
+       detection precision delta
+Output: optimal safety coefficient c_star
 
-1. // 步骤1：标定性能成本函数
-2. $c_{\text{scan}}$ = [C-0.2, C-0.1, ..., 2.5C+0.2]  // 步长0.1
+1. // Step 1: Calibrate performance cost function
+2. c_scan = [C-0.2, C-0.1, ..., 2.5*C+0.2]  // step size 0.1
 3. performance_costs = []
-4. for each $c \in c_{\text{scan}}$:
-5.     embed_watermark($c$)  // 嵌入水印
-6.     $\Delta A(c)$ = measure_performance_degradation($\mathcal{D}$)
-7.     performance_costs.append($\Delta A(c)$)
-8. $a, b, p, q$ = fit_polynomial($c_{\text{scan}}$, performance_costs)
-9. $\Delta A(c)$ = $a \cdot c^p + b \cdot c^q$
+4. for each c in c_scan:
+5.     embed_watermark(c)                    // Embed watermark
+6.     Delta_A_c = measure_performance_degradation(D)
+7.     performance_costs.append(Delta_A_c)
+8. a, b, p, q = fit_polynomial(c_scan, performance_costs)
+9. Delta_A_c = a * power(c, p) + b * power(c, q)
 10.
-11. // 步骤2：网格搜索
-12. $c^*$ = None
-13. min_objective = $\infty$
+11. // Step 2: Grid search
+12. c_star = None
+13. min_objective = infinity
 14. 
-15. // 第一轮：粗网格
-16. $c_{\text{coarse}}$ = [C, C+0.2, ..., 2.5C]  // 步长0.2
-17. for each $c \in c_{\text{coarse}}$:
-18.     $n^*(c)$ = log(1/$\delta$) / ($\gamma \cdot c \cdot (c-C)$)
-19.     objective = $n^*(c)$ + $\lambda \cdot \Delta A(c)$
+15. // Round 1: Coarse grid
+16. c_coarse = [C, C+0.2, ..., 2.5*C]  // step size 0.2
+17. for each c in c_coarse:
+18.     n_star_c = log(1/delta) / (gamma * c * (c - C))
+19.     objective = n_star_c + lambda * Delta_A_c
 20.     if objective < min_objective:
 21.         min_objective = objective
-22.         $c^*$ = $c$
+22.         c_star = c
 23.
-24. // 第二轮：细网格
-25. $c_{\text{fine}}$ = [$c^*$-0.4, $c^*$-0.35, ..., $c^*$+0.4]  // 步长0.05
-26. for each $c \in c_{\text{fine}}$:
-27.     $n^*(c)$ = log(1/$\delta$) / ($\gamma \cdot c \cdot (c-C)$)
-28.     objective = $n^*(c)$ + $\lambda \cdot \Delta A(c)$
+24. // Round 2: Fine grid
+25. c_fine = [c_star-0.4, c_star-0.35, ..., c_star+0.4]  // step 0.05
+26. for each c in c_fine:
+27.     n_star_c = log(1/delta) / (gamma * c * (c - C))
+28.     objective = n_star_c + lambda * Delta_A_c
 29.     if objective < min_objective:
 30.         min_objective = objective
-31.         $c^*$ = $c$
+31.         c_star = c
 32.
-33. // 第三轮：精细搜索（可选）
-34. $c_{\text{precise}}$ = [$c^*$-0.1, $c^*$-0.09, ..., $c^*$+0.1]  // 步长0.01
-35. for each $c \in c_{\text{precise}}$:
-36.     $n^*(c)$ = log(1/$\delta$) / ($\gamma \cdot c \cdot (c-C)$)
-37.     objective = $n^*(c)$ + $\lambda \cdot \Delta A(c)$
+33. // Round 3: Precise search (optional)
+34. c_precise = [c_star-0.1, c_star-0.09, ..., c_star+0.1]  // step 0.01
+35. for each c in c_precise:
+36.     n_star_c = log(1/delta) / (gamma * c * (c - C))
+37.     objective = n_star_c + lambda * Delta_A_c
 38.     if objective < min_objective:
 39.         min_objective = objective
-40.         $c^*$ = $c$
+40.         c_star = c
 41.
-42. return $c^*$, min_objective
+42. return c_star, min_objective
 \end{verbatim}
+}
 
 \textbf{最终输出报告}：
 \begin{itemize}
