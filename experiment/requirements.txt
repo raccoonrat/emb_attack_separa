@@ -1,0 +1,9 @@
+torch
+transformers
+numpy
+scipy
+scikit-learn
+tqdm
+datasets
+sentencepiece # Mixtral 等模型需要
+accelerate # 辅助加载大模型
