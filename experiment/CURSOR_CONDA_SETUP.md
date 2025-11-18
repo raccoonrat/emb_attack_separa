@@ -1,5 +1,22 @@
 # Cursor中使用Miniconda3配置
 
+## ⚠️ 重要：首次使用必须先初始化conda
+
+**如果遇到 `CondaError: Run 'conda init' before 'conda activate'` 错误**，请先运行：
+
+```powershell
+# 方法1: 使用修复脚本（推荐）
+.\experiment\fix_conda_init.ps1
+
+# 方法2: 手动初始化
+C:\Users\wangyh43\AppData\Local\miniconda3\Scripts\conda.exe init powershell
+C:\Users\wangyh43\AppData\Local\miniconda3\Scripts\conda.exe init cmd.exe
+```
+
+**初始化后，必须关闭并重新打开终端才能生效！**
+
+---
+
 ## 方法1: 使用终端配置文件（推荐）
 
 ### PowerShell配置
@@ -78,4 +95,32 @@ conda env list
 
 # 检查当前环境
 conda info --envs
+```
+
+## 常见问题
+
+### Q1: CondaError: Run 'conda init' before 'conda activate'
+
+**这是最常见的问题！**
+
+**解决方案**:
+
+```powershell
+# 方法1: 使用修复脚本（推荐）
+.\experiment\fix_conda_init.ps1
+
+# 方法2: 手动初始化
+C:\Users\wangyh43\AppData\Local\miniconda3\Scripts\conda.exe init powershell
+C:\Users\wangyh43\AppData\Local\miniconda3\Scripts\conda.exe init cmd.exe
+
+# 重要：初始化后必须关闭并重新打开终端！
+```
+
+### Q2: PowerShell执行策略错误
+
+**错误**: `无法加载文件，因为在此系统上禁止运行脚本`
+
+**解决方案**:
+```powershell
+Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```

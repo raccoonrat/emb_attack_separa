@@ -6,7 +6,36 @@
 - **环境名称**: `moe_watermark`
 - **激活脚本**: 已创建
 
+## ⚠️ 重要：首次使用必须先初始化conda
+
+**如果遇到 `CondaError: Run 'conda init' before 'conda activate'` 错误**，请先运行：
+
+```powershell
+# 方法1: 使用修复脚本（推荐）
+.\experiment\fix_conda_init.ps1
+
+# 方法2: 手动初始化
+C:\Users\wangyh43\AppData\Local\miniconda3\Scripts\conda.exe init powershell
+C:\Users\wangyh43\AppData\Local\miniconda3\Scripts\conda.exe init cmd.exe
+```
+
+**初始化后，必须关闭并重新打开终端才能生效！**
+
+---
+
 ## 🚀 快速配置（3步）
+
+### 步骤0: 初始化conda（首次使用必须）
+
+**在Anaconda Prompt中运行**（或使用修复脚本）：
+
+```bash
+# 初始化conda
+conda init powershell
+conda init cmd.exe
+
+# 关闭并重新打开终端
+```
 
 ### 步骤1: 配置Cursor终端（自动激活环境）
 
@@ -132,24 +161,43 @@ conda activate moe_watermark
 
 ## 🐛 常见问题
 
-### Q1: PowerShell执行策略错误
+### Q1: CondaError: Run 'conda init' before 'conda activate'
+
+**这是最常见的问题！**
+
+**解决方案**:
+
+```powershell
+# 方法1: 使用修复脚本（推荐）
+.\experiment\fix_conda_init.ps1
+
+# 方法2: 手动初始化
+C:\Users\wangyh43\AppData\Local\miniconda3\Scripts\conda.exe init powershell
+C:\Users\wangyh43\AppData\Local\miniconda3\Scripts\conda.exe init cmd.exe
+
+# 重要：初始化后必须关闭并重新打开终端！
+```
+
+### Q2: PowerShell执行策略错误
+
+**错误**: `无法加载文件，因为在此系统上禁止运行脚本`
 
 **解决方案**:
 ```powershell
 Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
 ```
 
-### Q2: 环境激活失败
+### Q3: 环境激活失败
 
 **解决方案**:
 ```bash
-# 初始化conda
+# 确保已初始化conda
 conda init powershell
 conda init cmd.exe
 # 重启终端
 ```
 
-### Q3: 找不到conda命令
+### Q4: 找不到conda命令
 
 **解决方案**: 添加到PATH（见上方说明）
 
