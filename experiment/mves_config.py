@@ -87,13 +87,17 @@ class MVESConfig:
         # 确保输出目录存在
         os.makedirs(self.experiment.output_dir, exist_ok=True)
         
-        # 自动设置模型相关参数
+        # 自动设置模型相关参数（统一使用switch-base-8）
         if "switch" in self.model.model_name.lower():
             self.model.model_type = "switch"
             # switch-base-8默认配置
-            if self.watermark.num_experts == 8:  # 使用默认值
-                self.watermark.num_experts = 8
-                self.watermark.k_top = 1
+            self.watermark.num_experts = 8  # switch-base-8固定8个专家
+            self.watermark.k_top = 1  # switch-base-8默认Top-1激活
+        
+        # 确保模型名称统一
+        if self.model.model_name != "google/switch-base-8":
+            print(f"警告: 模型名称不是google/switch-base-8，当前: {self.model.model_name}")
+            print("建议: 统一使用google/switch-base-8以确保兼容性")
     
     def to_dict(self) -> Dict[str, Any]:
         """转换为字典"""

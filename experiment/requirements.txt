@@ -1,9 +1,11 @@
-torch
-transformers
+torch>=2.0.0
+transformers>=4.30.0
 numpy
 scipy
 scikit-learn
 tqdm
 datasets
-sentencepiece # Mixtral 等模型需要
+sentencepiece # Switch Transformer等模型需要
 accelerate # 辅助加载大模型
+bitsandbytes # 8-bit量化支持（可选，用于显存优化）
+psutil # 内存监控（可选）

@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from scipy.optimize import minimize_scalar
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from typing import Tuple, List, Optional
 
 from moe_watermark import get_watermark_data_from_model
@@ -17,7 +17,7 @@ class LLRDetector:
     """
     def __init__(
         self, 
-        model: AutoModelForCausalLM, 
+        model: AutoModelForSeq2SeqLM, 
         tokenizer: AutoTokenizer, 
         tau_alpha: float = 20.0,  # 判决阈值，应通过H0实验标定 (论文第3节)
         alpha: float = 0.01  # 第一类错误率 (假阳性率)
@@ -184,7 +184,7 @@ class LLRDetector:
             with torch.no_grad():
                 self.model(**inputs)
             
-            watermark_data = get_watermark_data_from_model(self.model)
+            watermark_data = get_watermark_data_from_switch_model(self.model)
             if watermark_data:
                 llr, _ = self.compute_llr_from_data(watermark_data)
                 llr_scores.append(llr)
@@ -222,8 +222,8 @@ class LLRDetector:
         with torch.no_grad():
             self.model(**inputs)
         
-        # 提取数据
-        watermark_data = get_watermark_data_from_model(self.model)
+        # 提取数据（统一使用switch-base-8）
+        watermark_data = get_watermark_data_from_switch_model(self.model)
         
         if not watermark_data:
             if return_details:

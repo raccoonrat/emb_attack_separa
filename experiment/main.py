@@ -1,25 +1,43 @@
 import argparse
 import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from datasets import load_dataset
 from torch.utils.data import DataLoader, Subset
 import json
 
-from moe_watermark import patch_moe_model_with_watermark
+from mves_watermark_corrected import patch_switch_model_with_watermark
 from calibration import calibrate_Lg, calibrate_C, calibrate_C_star
 from detector import LLRDetector
 from attacks import paraphrase_text_batch, estimate_gamma_from_text
 from experiments import run_all_experiments, ExperimentA, ExperimentC, ExperimentD, ExperimentE
 
 def load_model_and_tokenizer(model_name: str, device: str):
+    """
+    加载模型和分词器（统一使用switch-base-8）
+    
+    针对GTX 4050优化：
+    - 使用FP16而非bfloat16（更好的兼容性）
+    - 限制显存使用
+    """
     print(f"Loading model and tokenizer: {model_name}...")
+    
+    # 统一使用switch-base-8（Seq2Seq模型）
+    from transformers import AutoModelForSeq2SeqLM
+    
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(
+    
+    # GTX 4050优化配置
+    model = AutoModelForSeq2SeqLM.from_pretrained(
         model_name,
-        torch_dtype=torch.bfloat16, # 使用 bfloat16 节省显存
-        device_map="auto", # 自动分配到 GPU
+        torch_dtype=torch.float16,  # FP16节省显存
+        device_map="auto",
+        low_cpu_mem_usage=True,
+        max_memory={0: "5GB"} if torch.cuda.is_available() else None
     )
+    
     print("Model and tokenizer loaded.")
+    print(f"显存使用: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB" if torch.cuda.is_available() else "")
+    
     return model, tokenizer
 
 def get_dataloader(dataset_name: str, split: str, tokenizer: AutoTokenizer, batch_size: int, num_samples: int):
@@ -44,7 +62,7 @@ def main():
     parser = argparse.ArgumentParser(description="MoE Provably Robust Watermark Project")
     parser.add_argument("--mode", type=str, required=True, 
                        choices=["calibrate", "embed", "detect", "experiment"], help="操作模式")
-    parser.add_argument("--model_name", type=str, default="mistralai/Mixtral-8x7B-v0.1", help="要使用的 MoE 模型")
+    parser.add_argument("--model_name", type=str, default="google/switch-base-8", help="要使用的 MoE 模型（统一使用switch-base-8）")
     parser.add_argument("--dataset_name", type=str, default="wikitext", help="用于标定的数据集")
     parser.add_argument("--dataset_split", type=str, default="train", help="数据集分片")
     parser.add_argument("--num_calib_samples", type=int, default=100, help="用于标定的样本数量")
@@ -84,7 +102,13 @@ def main():
 
         # (注意：C 标定需要 patch 模型，并且依赖 Lg)
         # 为 C 标定 patch 一个临时的 key
-        patched_model_for_C = patch_moe_model_with_watermark(model, "calib_C_key", 0.01)
+        from mves_config import get_default_config
+        config_temp = get_default_config()
+        config_temp.watermark.secret_key = "calib_C_key"
+        config_temp.watermark.epsilon = 0.01
+        config_temp.model.model_name = args.model_name
+        
+        patched_model_for_C = patch_switch_model_with_watermark(model, config_temp)
         
         # (注意：calibrate_C 依赖一个可用的 paraphrase 模型，可能很慢)
         # C_prop, C_stability, C = calibrate_C(patched_model_for_C, dataloader, tokenizer, device, Lg)
@@ -111,8 +135,14 @@ def main():
         epsilon = args.c_star**2 * args.gamma_design
         print(f"Using c*={args.c_star}, γ={args.gamma_design} -> ε={epsilon:.4f}")
         
-        # Patch 模型
-        patched_model = patch_moe_model_with_watermark(model, args.secret_key, epsilon)
+        # Patch 模型（统一使用switch-base-8）
+        from mves_config import get_default_config
+        config = get_default_config()
+        config.watermark.secret_key = args.secret_key
+        config.watermark.epsilon = epsilon
+        config.model.model_name = args.model_name
+        
+        patched_model = patch_switch_model_with_watermark(model, config)
         
         print(f"\nGenerating watermarked text from prompt: '{args.prompt}'...")
         inputs = tokenizer(args.prompt, return_tensors="pt").to(device)
@@ -142,7 +172,13 @@ def main():
         print(f"Loading detector with c*={args.c_star}, γ={args.gamma_design} -> ε={epsilon:.4f}")
 
         # Patch 模型，以便 LLR 检测器可以访问 p0 和 p1
-        patched_model = patch_moe_model_with_watermark(model, args.secret_key, epsilon)
+        from mves_config import get_default_config
+        config = get_default_config()
+        config.watermark.secret_key = args.secret_key
+        config.watermark.epsilon = epsilon
+        config.model.model_name = args.model_name
+        
+        patched_model = patch_switch_model_with_watermark(model, config)
         
         detector = LLRDetector(patched_model, tokenizer, tau_alpha=args.tau_alpha)
         

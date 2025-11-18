@@ -7,7 +7,7 @@
 import torch
 import numpy as np
 from typing import Dict, List, Any, Optional
-from transformers import AutoModelForCausalLM, AutoModelForSeq2SeqLM
+from transformers import AutoModelForSeq2SeqLM
 from torch.utils.data import DataLoader
 
 from calibration import calibrate_Lg, compute_chernoff_information
@@ -21,7 +21,7 @@ class DeploymentValidator:
     确保系统的理论约束在实际环境中满足
     """
     
-    def __init__(self, model: Any, config: Dict[str, Any]):
+    def __init__(self, model: AutoModelForSeq2SeqLM, config: Dict[str, Any]):
         """
         初始化验证器
         
@@ -240,7 +240,7 @@ class DeploymentValidator:
 
 
 def validate_deployment(
-    model: Any,
+    model: AutoModelForSeq2SeqLM,
     config: Dict[str, Any],
     validation_data: Optional[DataLoader] = None
 ) -> Dict[str, Any]:

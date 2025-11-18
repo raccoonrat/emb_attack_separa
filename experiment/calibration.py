@@ -3,11 +3,12 @@ import numpy as np
 from tqdm import tqdm
 from scipy.optimize import minimize
 from sklearn.linear_model import RANSACRegressor, HuberRegressor
-from transformers import AutoModelForCausalLM
+from transformers import AutoModelForSeq2SeqLM
 from torch.utils.data import DataLoader
 from typing import Tuple, Dict
 
-from moe_watermark import patch_moe_model_with_watermark, get_watermark_data_from_model
+from mves_watermark_corrected import patch_switch_model_with_watermark, get_watermark_data_from_switch_model
+from mves_config import get_default_config
 from attacks import estimate_gamma_from_text, paraphrase_text_batch
 
 # 占位符：需要一个函数来计算 Chernoff 信息
@@ -32,7 +33,7 @@ def compute_chernoff_information(p0: torch.Tensor, p1: torch.Tensor) -> float:
         # 边界情况
         return max(objective(0), objective(1))
 
-def calibrate_Lg(model: AutoModelForCausalLM, dataloader: DataLoader, device: torch.device) -> float:
+def calibrate_Lg(model: AutoModelForSeq2SeqLM, dataloader: DataLoader, device: torch.device) -> float:
     """
     标定 Lipschitz 常数 Lg (对标 Algorithm 1)
     """
@@ -86,7 +87,7 @@ def calibrate_Lg(model: AutoModelForCausalLM, dataloader: DataLoader, device: to
     return float(Lg_95)
 
 
-def calibrate_C(model: AutoModelForCausalLM, dataloader: DataLoader, tokenizer, device: torch.device, Lg: float) -> Tuple[float, float, float]:
+def calibrate_C(model: AutoModelForSeq2SeqLM, dataloader: DataLoader, tokenizer, device: torch.device, Lg: float) -> Tuple[float, float, float]:
     """
     标定 C_prop, C_stability, C (对标 Algorithm 2)
     """
@@ -118,7 +119,7 @@ def calibrate_C(model: AutoModelForCausalLM, dataloader: DataLoader, tokenizer, 
                 inputs = tokenizer(txt, return_tensors="pt").to(device)
                 with torch.no_grad():
                     model(**inputs) # 运行 forward 以填充 _watermark_detection_data
-                data = get_watermark_data_from_model(model)
+                data = get_watermark_data_from_switch_model(model)
                 if not data:
                     return torch.empty(0)
                 # (p_0, p_1, S_obs)
@@ -193,7 +194,7 @@ def calibrate_C(model: AutoModelForCausalLM, dataloader: DataLoader, tokenizer, 
                 inputs = tokenizer(txt, return_tensors="pt").to(device)
                 with torch.no_grad():
                     model(**inputs)
-                data = get_watermark_data_from_model(model)
+                data = get_watermark_data_from_switch_model(model)
                 if not data:
                     return None
                 p_0_dist = data[0][0] if len(data) > 0 else None
@@ -244,7 +245,7 @@ def calibrate_C(model: AutoModelForCausalLM, dataloader: DataLoader, tokenizer, 
     return float(C_prop), float(C_stability), float(C)
 
 def calibrate_C_star(
-    model: AutoModelForCausalLM, 
+    model: AutoModelForSeq2SeqLM, 
     dataloader: DataLoader, 
     C: float, 
     gamma_design: float, 
@@ -269,7 +270,11 @@ def calibrate_C_star(
     for c_val in tqdm(c_scan, desc="Calibrating ΔA(c)"):
         epsilon = c_val**2 * gamma_design
         # K_sec 在这里是临时的，只为测量 PPL
-        temp_model = patch_moe_model_with_watermark(model, "temp_calib_key", epsilon)
+        config_temp = get_default_config()
+        config_temp.watermark.secret_key = "temp_calib_key"
+        config_temp.watermark.epsilon = epsilon
+        config_temp.model.model_name = "google/switch-base-8"
+        temp_model = patch_switch_model_with_watermark(model, config_temp)
         
         ppl = measure_ppl(temp_model, dataloader, device)
         delta_A = ppl - base_ppl # 性能 *下降*，所以 ppl 越高, ΔA 越大
@@ -314,7 +319,7 @@ def calibrate_C_star(
     print(f"Optimal Security Factor c* calibrated: {best_c_star:.4f}")
     return float(best_c_star)
 
-def measure_ppl(model: AutoModelForCausalLM, dataloader: DataLoader, device: torch.device) -> float:
+def measure_ppl(model: AutoModelForSeq2SeqLM, dataloader: DataLoader, device: torch.device) -> float:
     """
     辅助函数：测量模型的 PPL
     """

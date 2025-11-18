@@ -9,11 +9,12 @@ import numpy as np
 import json
 from tqdm import tqdm
 from typing import Dict, List, Tuple, Optional
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from torch.utils.data import DataLoader
 from collections import defaultdict
 
-from moe_watermark import patch_moe_model_with_watermark, get_watermark_data_from_model
+from mves_watermark_corrected import patch_switch_model_with_watermark, get_watermark_data_from_switch_model
+from mves_config import get_default_config
 from detector import LLRDetector
 from attacks import paraphrase_text_batch, estimate_gamma_from_text
 from calibration import calibrate_Lg, calibrate_C, calibrate_C_star, compute_chernoff_information
@@ -41,13 +42,15 @@ class ExperimentFramework:
         self.vocab_size = len(tokenizer) if hasattr(tokenizer, '__len__') else tokenizer.vocab_size
         self.gamma_G = 0.05  # 绿名单占比 (Token-level, 仅用于对比)
         
-    def load_model(self) -> AutoModelForCausalLM:
-        """加载模型"""
+    def load_model(self) -> AutoModelForSeq2SeqLM:
+        """加载模型（统一使用switch-base-8）"""
         print(f"Loading model: {self.model_name}...")
-        model = AutoModelForCausalLM.from_pretrained(
+        model = AutoModelForSeq2SeqLM.from_pretrained(
             self.model_name,
-            torch_dtype=torch.bfloat16,
-            device_map="auto"
+            torch_dtype=torch.float16,  # FP16优化
+            device_map="auto",
+            low_cpu_mem_usage=True,
+            max_memory={0: "5GB"} if torch.cuda.is_available() else None
         )
         return model
 
@@ -176,7 +179,7 @@ class ExperimentB(ExperimentFramework):
     
     def run(
         self,
-        model: AutoModelForCausalLM,
+        model: AutoModelForSeq2SeqLM,
         dataloader: DataLoader,
         delta_values: List[float] = [0.5, 1.0, 1.5, 2.0],
         gamma_values: List[float] = [0.01, 0.02, 0.03, 0.05]
@@ -213,7 +216,7 @@ class ExperimentC(ExperimentFramework):
     
     def run(
         self,
-        model: AutoModelForCausalLM,
+        model: AutoModelForSeq2SeqLM,
         dataloader: DataLoader,
         gamma_values: List[float] = [0.00, 0.01, 0.02, 0.03, 0.04, 0.05],
         c_star: float = 2.0,
@@ -241,8 +244,12 @@ class ExperimentC(ExperimentFramework):
             epsilon = c_star**2 * gamma
             
             # 范式B: MoE水印
-            patched_model = patch_moe_model_with_watermark(
-                model, self.secret_key, epsilon
+            config_exp = get_default_config()
+            config_exp.watermark.secret_key = self.secret_key
+            config_exp.watermark.epsilon = epsilon
+            config_exp.model.model_name = self.model_name
+            patched_model = patch_switch_model_with_watermark(
+                model, config_exp
             )
             
             # 生成水印文本并应用攻击
@@ -300,7 +307,7 @@ class ExperimentD(ExperimentFramework):
     
     def run(
         self,
-        model: AutoModelForCausalLM,
+        model: AutoModelForSeq2SeqLM,
         dataloader: DataLoader
     ) -> Dict:
         """
@@ -345,7 +352,7 @@ class ExperimentE(ExperimentFramework):
     
     def run(
         self,
-        model: AutoModelForCausalLM,
+        model: AutoModelForSeq2SeqLM,
         dataloader: DataLoader,
         c_values: List[float] = [1.5, 2.0, 2.5, 3.0, 3.5],
         gamma_design: float = 0.03,
@@ -382,8 +389,12 @@ class ExperimentE(ExperimentFramework):
             epsilon = c**2 * gamma_design
             
             # Patch模型
-            patched_model = patch_moe_model_with_watermark(
-                model, self.secret_key, epsilon
+            config_exp = get_default_config()
+            config_exp.watermark.secret_key = self.secret_key
+            config_exp.watermark.epsilon = epsilon
+            config_exp.model.model_name = self.model_name
+            patched_model = patch_switch_model_with_watermark(
+                model, config_exp
             )
             
             # 测量性能下降 (占位)
