@@ -147,11 +147,168 @@ def cleanup_resources(verbose=False):
 # 注册退出时的清理函数
 atexit.register(cleanup_resources)
 
+import numpy as np
 from mves_watermark_corrected import patch_switch_model_with_watermark
 from calibration import calibrate_Lg, calibrate_C, calibrate_C_star
 from detector import LLRDetector
 from attacks import paraphrase_text_batch, estimate_gamma_from_text
 from experiments import run_all_experiments, ExperimentA, ExperimentC, ExperimentD, ExperimentE
+
+def calculate_text_ppl(model, tokenizer, text: str, device: str) -> float:
+    """
+    计算单个文本的困惑度 (Perplexity, PPL)
+    
+    对于T5/Switch Transformers（encoder-decoder模型），正确的方法是：
+    1. 将文本作为decoder输入（自回归）
+    2. encoder输入可以是文本本身或空
+    3. 计算模型对文本的负对数似然
+    4. PPL = exp(平均负对数似然)
+    
+    Args:
+        model: 模型（google/switch-base-8）
+        tokenizer: 分词器
+        text: 待评估的文本
+        device: 设备
+        
+    Returns:
+        ppl: 困惑度值
+    """
+    model.eval()
+    
+    # 将文本编码为token IDs
+    tokens = tokenizer.encode(text, return_tensors="pt", truncation=True, max_length=512).to(device)
+    
+    if tokens.size(1) < 2:
+        return 1000.0  # 文本太短，返回一个高值
+    
+    with torch.no_grad():
+        try:
+            # 对于T5/Switch Transformers，正确的方法是：
+            # 1. encoder输入：使用文本本身（或空，但T5需要encoder输入）
+            # 2. decoder输入：从start token开始，逐步添加token
+            # 3. 计算每个位置的loss
+            
+            # T5的decoder需要一个start token
+            # Switch Transformers使用pad_token_id作为decoder的start token
+            decoder_start_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+            
+            # 方法：使用模型的forward方法，传入labels来计算loss
+            # 这是最准确的方法，因为模型内部会正确处理encoder-decoder结构
+            
+            # encoder输入：使用文本本身
+            encoder_input_ids = tokens.clone()
+            encoder_attention_mask = torch.ones_like(encoder_input_ids)
+            
+            # decoder输入：从start token开始
+            decoder_input_ids = torch.cat([
+                torch.full((1, 1), decoder_start_token_id, dtype=torch.long, device=device),
+                tokens  # 完整的文本作为decoder输入
+            ], dim=1)
+            
+            # labels：用于计算loss（需要shift，因为decoder预测下一个token）
+            # labels应该与decoder_input_ids对齐，但需要shift
+            labels = decoder_input_ids[:, 1:].clone()  # 去掉第一个start token
+            # 在末尾添加pad token以匹配长度
+            labels = torch.cat([
+                labels,
+                torch.full((1, 1), tokenizer.pad_token_id if tokenizer.pad_token_id is not None else -100, dtype=torch.long, device=device)
+            ], dim=1)
+            
+            # 调用模型计算loss
+            outputs = model(
+                input_ids=encoder_input_ids,
+                attention_mask=encoder_attention_mask,
+                decoder_input_ids=decoder_input_ids,
+                labels=labels
+            )
+            
+            # 获取loss
+            if hasattr(outputs, 'loss') and outputs.loss is not None:
+                loss = outputs.loss.item()
+                ppl = np.exp(loss)
+            else:
+                # 如果没有loss，手动计算
+                logits = outputs.logits  # [batch_size, seq_len, vocab_size]
+                
+                # 对齐logits和labels
+                # logits[i]预测的是decoder_input_ids[i+1]，即labels[i]
+                if logits.size(1) == labels.size(1):
+                    shift_logits = logits.view(-1, logits.size(-1))
+                    shift_labels = labels.view(-1)
+                    loss_fct = torch.nn.CrossEntropyLoss(
+                        ignore_index=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else -100
+                    )
+                    loss = loss_fct(shift_logits, shift_labels).item()
+                    ppl = np.exp(loss)
+                else:
+                    # 长度不匹配，使用手动计算每个token的概率
+                    total_nll = 0.0
+                    num_tokens = 0
+                    
+                    # logits的每个位置对应预测下一个token
+                    min_len = min(logits.size(1), labels.size(1))
+                    for i in range(min_len):
+                        token_id = labels[0, i].item()
+                        if token_id != tokenizer.pad_token_id and token_id != -100:
+                            log_probs = torch.nn.functional.log_softmax(logits[0, i, :], dim=-1)
+                            token_log_prob = log_probs[token_id].item()
+                            total_nll -= token_log_prob
+                            num_tokens += 1
+                    
+                    if num_tokens > 0:
+                        avg_nll = total_nll / num_tokens
+                        ppl = np.exp(avg_nll)
+                    else:
+                        ppl = 1000.0
+            
+        except Exception as e:
+            # 如果上述方法失败，尝试更简单的方法
+            try:
+                # 简化方法：只使用decoder部分
+                decoder_start_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+                
+                # 创建decoder输入和labels
+                decoder_input_ids = torch.cat([
+                    torch.full((1, 1), decoder_start_token_id, dtype=torch.long, device=device),
+                    tokens[:, :-1]  # 去掉最后一个token
+                ], dim=1)
+                
+                labels = tokens.clone()  # 完整的文本作为labels
+                
+                # encoder输入：使用文本本身
+                encoder_input_ids = tokens.clone()
+                encoder_attention_mask = torch.ones_like(encoder_input_ids)
+                
+                outputs = model(
+                    input_ids=encoder_input_ids,
+                    attention_mask=encoder_attention_mask,
+                    decoder_input_ids=decoder_input_ids,
+                    labels=labels
+                )
+                
+                if hasattr(outputs, 'loss') and outputs.loss is not None:
+                    loss = outputs.loss.item()
+                    ppl = np.exp(loss)
+                else:
+                    # 手动计算
+                    logits = outputs.logits
+                    shift_logits = logits.view(-1, logits.size(-1))
+                    shift_labels = labels[:, 1:].view(-1)  # shift labels
+                    loss_fct = torch.nn.CrossEntropyLoss(
+                        ignore_index=tokenizer.pad_token_id if tokenizer.pad_token_id is not None else -100
+                    )
+                    loss = loss_fct(shift_logits, shift_labels).item()
+                    ppl = np.exp(loss)
+                    
+            except Exception as e2:
+                print(f"    PPL计算错误: {e2}")
+                # 返回一个合理的默认值
+                ppl = 1000.0
+    
+    # 限制PPL在合理范围内
+    # 注意：不要设置最小值，因为可能确实很低
+    ppl = max(0.1, min(ppl, 10000.0))
+    return float(ppl)
 
 def load_model_and_tokenizer(model_name: str, device: str):
     """
@@ -217,7 +374,7 @@ def main():
     parser.add_argument("--attack", type=str, choices=["none", "paraphrase"], default="none", help="在检测前施加的攻击")
     
     # Watermark Params (可被 calibrate 覆盖)
-    parser.add_argument("--gamma_design", type=float, default=0.03, help="设计的攻击强度 γ")
+    parser.add_argument("--gamma_design", type=float, default=0.01, help="设计的攻击强度 γ (默认0.01，较小值可提高文本质量)")
     parser.add_argument("--C_system", type=float, default=1.5, help="系统常数 C (来自标定)")
     parser.add_argument("--c_star", type=float, default=2.0, help="安全系数 c* (来自标定)")
     parser.add_argument("--tau_alpha", type=float, default=5.0, help="LLR 检测阈值 τ (默认5.0，应通过H0假设下的实验标定，见THRESHOLD_EXPLANATION.md)")
@@ -310,6 +467,9 @@ def main():
                 max_new_tokens=100, 
                 do_sample=True, # 激活采样
                 top_k=50,
+                top_p=0.95,  # 添加nucleus sampling以提高质量
+                temperature=0.7,  # 降低temperature以提高文本质量
+                repetition_penalty=1.1,  # 减少重复
                 logits_processor=[logits_processor]  # 添加 logits processor
             )
             
@@ -317,6 +477,38 @@ def main():
         print("\n--- Watermarked Output ---")
         print(watermarked_text)
         print("--------------------------")
+        
+        # 计算PPL（困惑度）来评估文本质量
+        print("\n计算文本质量指标 (PPL)...")
+        try:
+            # 1. 计算原始模型的PPL（基线）
+            print("  计算原始模型PPL...")
+            original_model, _ = load_model_and_tokenizer(args.model_name, device)
+            original_model.eval()
+            original_ppl = calculate_text_ppl(original_model, tokenizer, watermarked_text, device)
+            
+            # 2. 计算水印模型的PPL
+            print("  计算水印模型PPL...")
+            watermarked_ppl = calculate_text_ppl(patched_model, tokenizer, watermarked_text, device)
+            
+            # 3. 计算PPL增加率
+            ppl_increase = ((watermarked_ppl - original_ppl) / original_ppl) * 100 if original_ppl > 0 else 0
+            
+            print(f"\n--- Text Quality Metrics ---")
+            print(f"Original Model PPL:  {original_ppl:.2f}")
+            print(f"Watermarked PPL:     {watermarked_ppl:.2f}")
+            print(f"PPL Increase:        {ppl_increase:.2f}%")
+            print("---------------------------")
+            
+            # 清理原始模型
+            del original_model
+            torch.cuda.empty_cache() if torch.cuda.is_available() else None
+            
+        except Exception as e:
+            import traceback
+            print(f"警告: PPL计算失败: {e}")
+            print(f"错误详情: {traceback.format_exc()}")
+            print("继续执行...")
         
         # 清理资源，确保程序能快速退出
         print("\n清理资源...")

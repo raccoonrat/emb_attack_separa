@@ -61,7 +61,13 @@ class MoEWatermarkForSwitch:
         
         # 计算偏置强度 (论文定义3.2)
         # ε = KL(p1||p0) ≈ Var[Δl] ≈ (1/2)||Δl||²_2
-        self.target_norm = np.sqrt(2.0 * epsilon)
+        # 注意：为了保持文本质量，我们需要限制偏置的大小
+        # 使用自适应缩放：根据epsilon调整，但限制最大偏置
+        base_norm = np.sqrt(2.0 * epsilon)
+        # 限制最大偏置，避免过度干扰模型输出
+        # router logits通常在[-5, 5]范围内，偏置不应超过其10%
+        max_bias = 0.5  # 最大偏置值（经验值，可根据需要调整）
+        self.target_norm = min(base_norm, max_bias)
         
         # 检测数据存储
         self._detection_data: List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]] = []
@@ -141,8 +147,24 @@ class MoEWatermarkForSwitch:
                     )
                     
                     # 计算偏置强度
-                    bias_green = self.target_norm / np.sqrt(1 + num_red)
+                    # 使用自适应缩放：根据原始logits的尺度调整偏置
+                    # 获取当前位置的原始logits范围
+                    l_0_pos = l_0[b, s, :]
+                    logits_std = torch.std(l_0_pos).item()
+                    logits_range = torch.max(l_0_pos).item() - torch.min(l_0_pos).item()
+                    
+                    # 自适应缩放：偏置不应超过logits标准差的20%
+                    adaptive_scale = min(1.0, (logits_std * 0.2) / (self.target_norm + 1e-9))
+                    scaled_norm = self.target_norm * adaptive_scale
+                    
+                    bias_green = scaled_norm / np.sqrt(1 + num_red)
                     bias_red = -bias_green / num_red
+                    
+                    # 进一步限制：确保偏置不会过度改变路由
+                    # 限制偏置不超过原始logits范围的5%
+                    max_bias_abs = max(0.1, logits_range * 0.05)
+                    bias_green = np.clip(bias_green, -max_bias_abs, max_bias_abs)
+                    bias_red = np.clip(bias_red, -max_bias_abs, max_bias_abs)
                     
                     # 应用偏置
                     delta_l[b, s, green_expert] = bias_green
