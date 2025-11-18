@@ -5,6 +5,15 @@ MVES (最小验证实验) 主脚本
 采用LogitsProcessor API实现水印嵌入
 """
 
+# 设置缓存路径到D盘（在导入transformers之前）
+import os
+from pathlib import Path
+CACHE_BASE = Path("D:/Dev/cache")
+os.environ.setdefault("HF_HOME", str(CACHE_BASE / "huggingface"))
+os.environ.setdefault("TRANSFORMERS_CACHE", str(CACHE_BASE / "huggingface" / "hub"))
+os.environ.setdefault("HF_DATASETS_CACHE", str(CACHE_BASE / "huggingface" / "datasets"))
+os.environ.setdefault("TORCH_HOME", str(CACHE_BASE / "torch"))
+
 import torch
 import numpy as np
 import json

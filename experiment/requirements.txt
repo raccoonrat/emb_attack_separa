@@ -9,3 +9,7 @@ sentencepiece # Switch Transformer等模型需要
 accelerate # 辅助加载大模型
 bitsandbytes # 8-bit量化支持（可选，用于显存优化）
 psutil # 内存监控（可选）
+
+# 缓存配置说明:
+# 运行前先设置环境变量或导入 cache_config.py
+# 详见: CACHE_MIGRATION.md

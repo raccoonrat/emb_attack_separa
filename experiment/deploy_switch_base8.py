@@ -4,8 +4,16 @@ GTX 4050部署脚本 - switch-base-8
 针对6GB显存的优化部署
 """
 
-import torch
+# 设置缓存路径到D盘（在导入transformers之前）
 import os
+from pathlib import Path
+CACHE_BASE = Path("D:/Dev/cache")
+os.environ.setdefault("HF_HOME", str(CACHE_BASE / "huggingface"))
+os.environ.setdefault("TRANSFORMERS_CACHE", str(CACHE_BASE / "huggingface" / "hub"))
+os.environ.setdefault("HF_DATASETS_CACHE", str(CACHE_BASE / "huggingface" / "datasets"))
+os.environ.setdefault("TORCH_HOME", str(CACHE_BASE / "torch"))
+
+import torch
 import gc
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from mves_config import MVESConfig, get_default_config, ModelConfig, WatermarkConfig, ExperimentConfig
