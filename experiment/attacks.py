@@ -96,7 +96,8 @@ def estimate_gamma_from_text(
     text_original: str, 
     text_attacked: str, 
     vocab_size: int,
-    method: str = "upper_bound"
+    method: str = "upper_bound",
+    use_semantic_correction: bool = False
 ) -> float:
     """
     估算攻击强度 γ (论文第7.4节: 攻击强度γ的上界估计)
@@ -180,5 +181,137 @@ def estimate_gamma_from_text(
         
         return float(kl_sum)
         
+    elif method == "hybrid":
+        # 方法3: 混合策略（1118文档推荐）
+        # 结合编辑距离上界和实测KL散度
+        gamma_upper = estimate_gamma_from_text(
+            text_original, text_attacked, vocab_size, method="upper_bound"
+        )
+        gamma_kl = estimate_gamma_from_text(
+            text_original, text_attacked, vocab_size, method="kl_divergence"
+        )
+        # 取平均值，兼顾保守性和准确性
+        gamma = (gamma_upper + gamma_kl) / 2.0
+        return float(gamma)
+    
     else:
-        raise ValueError(f"Unknown method: {method}. Use 'upper_bound' or 'kl_divergence'")
+        raise ValueError(f"Unknown method: {method}. Use 'upper_bound', 'kl_divergence', or 'hybrid'")
+
+
+def estimate_gamma_with_semantic_correction(
+    text_original: str,
+    text_attacked: str,
+    vocab_size: int,
+    model_name: str = "bert-base-uncased"
+) -> Dict[str, float]:
+    """
+    使用BERT语义相似度补正的攻击强度估计（1118文档方法2）
+    
+    三层估计策略：
+    1. 编辑距离上界（最保守）
+    2. BERT语义相似度补正（中等）
+    3. 实测KL散度（最精确）
+    
+    Args:
+        text_original: 原始文本
+        text_attacked: 攻击后文本
+        vocab_size: 词汇表大小
+        model_name: BERT模型名称
+        
+    Returns:
+        estimates: 包含各种估计方法的字典
+    """
+    try:
+        from transformers import AutoTokenizer, AutoModel
+        import torch.nn.functional as F
+        
+        # 方法1: 编辑距离上界
+        gamma_upper = estimate_gamma_from_text(
+            text_original, text_attacked, vocab_size, method="upper_bound"
+        )
+        
+        # 方法2: BERT语义相似度补正
+        bert_tokenizer = AutoTokenizer.from_pretrained(model_name)
+        bert_model = AutoModel.from_pretrained(model_name)
+        bert_model.eval()
+        
+        def get_bert_embedding(text: str) -> torch.Tensor:
+            """获取BERT embedding"""
+            inputs = bert_tokenizer(
+                text,
+                return_tensors="pt",
+                max_length=512,
+                truncation=True,
+                padding=True
+            )
+            with torch.no_grad():
+                outputs = bert_model(**inputs)
+            # 使用[CLS] token的隐藏状态
+            return outputs.last_hidden_state[:, 0, :].squeeze()
+        
+        emb_original = get_bert_embedding(text_original)
+        emb_attacked = get_bert_embedding(text_attacked)
+        
+        # 计算余弦相似度
+        semantic_similarity = F.cosine_similarity(
+            emb_original.unsqueeze(0),
+            emb_attacked.unsqueeze(0)
+        ).item()
+        
+        # KL散度与语义相似度的关系
+        # 当sim接近1时，KL应较小；当sim降低时，KL增加
+        semantic_penalty = 1.0 - semantic_similarity
+        gamma_semantic_adjusted = gamma_upper * (1 + semantic_penalty)
+        
+        # 方法3: 实测KL散度
+        gamma_measured = estimate_gamma_from_text(
+            text_original, text_attacked, vocab_size, method="kl_divergence"
+        )
+        
+        # 混合策略（推荐）
+        gamma_hybrid = (gamma_upper + gamma_measured) / 2.0
+        
+        return {
+            'method_1_edit_distance': {
+                'gamma': gamma_upper,
+                'type': 'upper_bound',
+                'conservativeness': 'high'
+            },
+            'method_2_semantic': {
+                'gamma': gamma_semantic_adjusted,
+                'semantic_similarity': semantic_similarity,
+                'type': 'upper_bound_refined'
+            },
+            'method_3_measured_kl': {
+                'gamma': gamma_measured,
+                'type': 'measured',
+                'conservativeness': 'none'
+            },
+            'hybrid': {
+                'gamma': gamma_hybrid,
+                'reasoning': 'average of upper_bound and measured'
+            },
+            'recommended_gamma': gamma_hybrid,
+            'upper_bound': gamma_upper,
+            'lower_bound': gamma_measured
+        }
+        
+    except ImportError:
+        print("警告: transformers未安装，无法使用BERT语义补正，回退到基础方法")
+        return {
+            'method_1_edit_distance': {
+                'gamma': estimate_gamma_from_text(
+                    text_original, text_attacked, vocab_size, method="upper_bound"
+                ),
+                'type': 'upper_bound'
+            },
+            'method_3_measured_kl': {
+                'gamma': estimate_gamma_from_text(
+                    text_original, text_attacked, vocab_size, method="kl_divergence"
+                ),
+                'type': 'measured'
+            },
+            'recommended_gamma': estimate_gamma_from_text(
+                text_original, text_attacked, vocab_size, method="hybrid"
+            )
+        }

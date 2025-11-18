@@ -13,12 +13,14 @@ from tqdm import tqdm
 from typing import List, Dict, Optional, Tuple
 from transformers import (
     AutoModelForSeq2SeqLM,
-    AutoTokenizer,
-    LogitsProcessorList
+    AutoTokenizer
 )
 
 from mves_config import MVESConfig, get_default_config, get_quick_test_config
-from mves_watermark import create_watermark_processor, MoEWatermarkLogitsProcessor
+from mves_watermark_corrected import (
+    patch_switch_model_with_watermark,
+    get_watermark_data_from_switch_model
+)
 from detector import LLRDetector
 from attacks import paraphrase_text_batch, estimate_gamma_from_text
 
@@ -91,11 +93,10 @@ class MVESExperiment:
         """
         print(f"\n嵌入水印: {text[:50]}...")
         
-        # 创建水印处理器
-        if self.watermark_processor is None:
-            self.watermark_processor = create_watermark_processor(
-                self.model, self.config, self.tokenizer
-            )
+        # Patch模型（如果尚未patch）
+        if not hasattr(self.model, '_watermark_patched'):
+            self.model = patch_switch_model_with_watermark(self.model, self.config)
+            self.model._watermark_patched = True
         
         # 编码输入
         inputs = self.tokenizer(
@@ -106,10 +107,7 @@ class MVESExperiment:
             max_length=self.config.experiment.max_length
         ).to(self.model.device)
         
-        # 创建LogitsProcessorList
-        logits_processor = LogitsProcessorList([self.watermark_processor])
-        
-        # 生成带水印的文本
+        # 生成带水印的文本（水印已通过patch注入）
         with torch.no_grad():
             outputs = self.model.generate(
                 **inputs,
@@ -117,7 +115,6 @@ class MVESExperiment:
                 do_sample=True,
                 temperature=0.7,
                 top_k=50,
-                logits_processor=logits_processor,
                 pad_token_id=self.tokenizer.pad_token_id or self.tokenizer.eos_token_id
             )
         
@@ -125,7 +122,7 @@ class MVESExperiment:
         watermarked_text = self.tokenizer.decode(outputs[0], skip_special_tokens=True)
         
         # 获取检测数据
-        detection_data = self.watermark_processor.get_detection_data()
+        detection_data = get_watermark_data_from_switch_model(self.model)
         
         metadata = {
             "original_text": text,
@@ -181,13 +178,12 @@ class MVESExperiment:
         # 对于MVES，我们使用LogitsProcessor的方式，检测需要特殊处理
         # 这里提供一个简化实现
         
-        # 使用水印处理器获取检测数据
-        if self.watermark_processor is None:
-            self.watermark_processor = create_watermark_processor(
-                self.model, self.config, self.tokenizer
-            )
+        # 确保模型已patch
+        if not hasattr(self.model, '_watermark_patched'):
+            self.model = patch_switch_model_with_watermark(self.model, self.config)
+            self.model._watermark_patched = True
         
-        # 运行模型获取检测数据
+        # 运行模型获取检测数据（水印已通过patch注入）
         inputs = self.tokenizer(
             text,
             return_tensors="pt",
@@ -196,17 +192,14 @@ class MVESExperiment:
             max_length=self.config.experiment.max_length
         ).to(self.model.device)
         
-        logits_processor = LogitsProcessorList([self.watermark_processor])
-        
         with torch.no_grad():
             _ = self.model.generate(
                 **inputs,
-                max_length=min(10, self.config.experiment.max_length),
-                logits_processor=logits_processor
+                max_length=min(10, self.config.experiment.max_length)
             )
         
         # 获取检测数据
-        detection_data = self.watermark_processor.get_detection_data()
+        detection_data = get_watermark_data_from_switch_model(self.model)
         
         # 计算LLR统计量 (简化实现)
         if detection_data:
