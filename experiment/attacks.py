@@ -1,7 +1,7 @@
 import torch
 import numpy as np
 from transformers import AutoTokenizer, AutoModelForSeq2SeqLM
-from typing import List
+from typing import List, Dict
 
 # 全局缓存释义模型
 _paraphrase_model = None

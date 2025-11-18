@@ -5,16 +5,58 @@ MVES (最小验证实验) 主脚本
 采用LogitsProcessor API实现水印嵌入
 """
 
-# 设置缓存路径到D盘（在导入transformers之前）
+# 设置缓存路径（在导入transformers之前）
+# 自动检测环境：WSL/Linux 或 Windows
 import os
+import platform
 from pathlib import Path
-CACHE_BASE = Path("D:/Dev/cache")
-os.environ.setdefault("HF_HOME", str(CACHE_BASE / "huggingface"))
-os.environ.setdefault("TRANSFORMERS_CACHE", str(CACHE_BASE / "huggingface" / "hub"))
-os.environ.setdefault("HF_DATASETS_CACHE", str(CACHE_BASE / "huggingface" / "datasets"))
-os.environ.setdefault("TORCH_HOME", str(CACHE_BASE / "torch"))
-# 设置Hugging Face镜像源（加速下载）
-os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+
+def detect_and_setup_cache():
+    """自动检测环境并设置缓存路径"""
+    # 检查是否在 WSL 或 Linux 环境
+    release = platform.release().lower()
+    is_wsl = (
+        "microsoft" in release or 
+        "wsl" in release
+    )
+    # 检查 /proc/version（如果存在）
+    if not is_wsl and os.path.exists("/proc/version"):
+        try:
+            with open("/proc/version", "r") as f:
+                proc_version = f.read().lower()
+                is_wsl = "microsoft" in proc_version
+        except (IOError, PermissionError):
+            pass
+    is_linux = platform.system() == "Linux"
+    
+    # 优先使用环境变量指定的配置
+    if os.environ.get("USE_WSL_CONFIG") == "1" or (is_wsl or is_linux):
+        # WSL/Linux 环境：使用 Linux 路径
+        try:
+            import cache_config_wsl
+            return  # cache_config_wsl 已经设置了所有环境变量
+        except ImportError:
+            # 如果导入失败，使用默认 Linux 路径
+            CACHE_BASE = Path.home() / ".cache" / "emb_attack_separa"
+            CACHE_BASE.mkdir(parents=True, exist_ok=True)
+    else:
+        # Windows 环境：使用 Windows 路径
+        try:
+            import cache_config
+            return  # cache_config 已经设置了所有环境变量
+        except ImportError:
+            # 如果导入失败，使用默认 Windows 路径
+            CACHE_BASE = Path("D:/Dev/cache")
+    
+    # 设置环境变量（如果导入配置模块失败）
+    os.environ.setdefault("HF_HOME", str(CACHE_BASE / "huggingface"))
+    os.environ.setdefault("TRANSFORMERS_CACHE", str(CACHE_BASE / "huggingface" / "hub"))
+    os.environ.setdefault("HF_DATASETS_CACHE", str(CACHE_BASE / "huggingface" / "datasets"))
+    os.environ.setdefault("TORCH_HOME", str(CACHE_BASE / "torch"))
+    os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+
+# 执行缓存配置
+detect_and_setup_cache()
 
 import torch
 import numpy as np

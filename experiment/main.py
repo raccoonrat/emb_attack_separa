@@ -1,20 +1,151 @@
-# 设置缓存路径到D盘（在导入transformers之前）
+# 设置缓存路径（在导入transformers之前）
+# 自动检测环境：WSL/Linux 或 Windows
 import os
+import platform
 from pathlib import Path
-CACHE_BASE = Path("D:/Dev/cache")
-os.environ.setdefault("HF_HOME", str(CACHE_BASE / "huggingface"))
-os.environ.setdefault("TRANSFORMERS_CACHE", str(CACHE_BASE / "huggingface" / "hub"))
-os.environ.setdefault("HF_DATASETS_CACHE", str(CACHE_BASE / "huggingface" / "datasets"))
-os.environ.setdefault("TORCH_HOME", str(CACHE_BASE / "torch"))
-# 设置Hugging Face镜像源（加速下载）
-os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+
+def detect_and_setup_cache():
+    """自动检测环境并设置缓存路径"""
+    # 检查是否在 WSL 或 Linux 环境
+    release = platform.release().lower()
+    is_wsl = (
+        "microsoft" in release or 
+        "wsl" in release
+    )
+    # 检查 /proc/version（如果存在）
+    if not is_wsl and os.path.exists("/proc/version"):
+        try:
+            with open("/proc/version", "r") as f:
+                proc_version = f.read().lower()
+                is_wsl = "microsoft" in proc_version
+        except (IOError, PermissionError):
+            pass
+    is_linux = platform.system() == "Linux"
+    
+    # 优先使用环境变量指定的配置
+    if os.environ.get("USE_WSL_CONFIG") == "1" or (is_wsl or is_linux):
+        # WSL/Linux 环境：使用 Linux 路径
+        try:
+            import cache_config_wsl
+            return  # cache_config_wsl 已经设置了所有环境变量
+        except ImportError:
+            # 如果导入失败，使用默认 Linux 路径
+            CACHE_BASE = Path.home() / ".cache" / "emb_attack_separa"
+            CACHE_BASE.mkdir(parents=True, exist_ok=True)
+    else:
+        # Windows 环境：使用 Windows 路径
+        try:
+            import cache_config
+            return  # cache_config 已经设置了所有环境变量
+        except ImportError:
+            # 如果导入失败，使用默认 Windows 路径
+            CACHE_BASE = Path("D:/Dev/cache")
+    
+    # 设置环境变量（如果导入配置模块失败）
+    os.environ.setdefault("HF_HOME", str(CACHE_BASE / "huggingface"))
+    os.environ.setdefault("TRANSFORMERS_CACHE", str(CACHE_BASE / "huggingface" / "hub"))
+    os.environ.setdefault("HF_DATASETS_CACHE", str(CACHE_BASE / "huggingface" / "datasets"))
+    os.environ.setdefault("TORCH_HOME", str(CACHE_BASE / "torch"))
+    os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
+
+# 执行缓存配置
+detect_and_setup_cache()
 
 import argparse
 import torch
+import gc
+import sys
+import threading
+import atexit
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 from datasets import load_dataset
 from torch.utils.data import DataLoader, Subset
 import json
+
+def cleanup_resources(verbose=False):
+    """清理所有资源，确保程序能快速退出"""
+    if verbose:
+        print("开始清理资源...")
+    
+    # 1. 清理 CUDA 缓存和上下文
+    # 注意：使用全局的 torch 模块，不要在这里导入
+    try:
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+            torch.cuda.synchronize()
+            torch.cuda.reset_peak_memory_stats()
+            # 尝试释放CUDA上下文（激进方法）
+            try:
+                torch.cuda.ipc_collect()
+            except:
+                pass
+    except Exception as e:
+        if verbose:
+            print(f"CUDA清理警告: {e}")
+    
+    # 2. 关闭transformers的文件句柄和缓存
+    try:
+        # 尝试关闭transformers的文件系统缓存
+        from transformers.file_utils import cached_path
+        # 清除transformers的缓存管理器
+        import transformers
+        if hasattr(transformers, '_file_cache'):
+            transformers._file_cache = {}
+    except:
+        pass
+    
+    # 3. 强制垃圾回收（多次以确保彻底）
+    for _ in range(5):  # 增加到5次
+        collected = gc.collect()
+        if verbose and collected > 0:
+            print(f"  垃圾回收: 释放了 {collected} 个对象")
+    
+    # 4. 检查并处理后台线程
+    if verbose:
+        threads_before = [t for t in threading.enumerate() if t != threading.main_thread() and t.is_alive()]
+        if threads_before:
+            print(f"检测到 {len(threads_before)} 个后台线程:")
+            for t in threads_before:
+                print(f"  - {t.name} (daemon={t.daemon}, alive={t.is_alive()})")
+    
+    # 5. 处理非守护线程：尝试将它们标记为守护线程
+    non_daemon_threads = []
+    for thread in threading.enumerate():
+        if thread != threading.main_thread() and thread.is_alive():
+            if not thread.daemon:
+                non_daemon_threads.append(thread)
+                # 尝试将线程标记为守护线程（允许在后台运行）
+                try:
+                    thread.daemon = True
+                    if verbose:
+                        print(f"  将线程 '{thread.name}' 标记为守护线程")
+                except (RuntimeError, AttributeError):
+                    # 某些线程在启动后无法修改daemon属性（如Thread-auto_conversion）
+                    if verbose:
+                        print(f"  警告: 无法将线程 '{thread.name}' 标记为守护线程（将在退出时强制终止）")
+    
+    # 6. 等待非守护线程完成（最多等待0.2秒）
+    for thread in non_daemon_threads:
+        thread.join(timeout=0.2)
+    
+    # 7. 最后一次垃圾回收
+    gc.collect()
+    
+    if verbose:
+        threads_after = [t for t in threading.enumerate() if t != threading.main_thread() and t.is_alive()]
+        if threads_after:
+            daemon_count = sum(1 for t in threads_after if t.daemon)
+            non_daemon_count = sum(1 for t in threads_after if not t.daemon)
+            if non_daemon_count > 0:
+                print(f"仍有 {non_daemon_count} 个非守护线程未退出（将强制终止）:")
+                for t in threads_after:
+                    if not t.daemon:
+                        print(f"  - {t.name} (daemon={t.daemon})")
+            if daemon_count > 0:
+                print(f"  ({daemon_count} 个守护线程仍在运行，不会阻止退出)")
+
+# 注册退出时的清理函数
+atexit.register(cleanup_resources)
 
 from mves_watermark_corrected import patch_switch_model_with_watermark
 from calibration import calibrate_Lg, calibrate_C, calibrate_C_star
@@ -158,18 +289,66 @@ def main():
         print(f"\nGenerating watermarked text from prompt: '{args.prompt}'...")
         inputs = tokenizer(args.prompt, return_tensors="pt").to(device)
         
+        # 添加 LogitsProcessor 来清理无效值
+        from transformers import LogitsProcessor
+        
+        class CleanInvalidLogitsProcessor(LogitsProcessor):
+            """清理生成过程中的无效 logits 值"""
+            def __call__(self, input_ids: torch.Tensor, scores: torch.Tensor) -> torch.Tensor:
+                # 检查并修复无效值
+                scores = torch.where(torch.isnan(scores), torch.zeros_like(scores), scores)
+                scores = torch.where(torch.isinf(scores), torch.zeros_like(scores), scores)
+                # 限制 logits 范围，避免极端值
+                scores = torch.clamp(scores, min=-100.0, max=100.0)
+                return scores
+        
+        logits_processor = CleanInvalidLogitsProcessor()
+        
         with torch.no_grad():
             outputs = patched_model.generate(
                 **inputs, 
                 max_new_tokens=100, 
                 do_sample=True, # 激活采样
-                top_k=50
+                top_k=50,
+                logits_processor=[logits_processor]  # 添加 logits processor
             )
             
         watermarked_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
         print("\n--- Watermarked Output ---")
         print(watermarked_text)
         print("--------------------------")
+        
+        # 清理资源，确保程序能快速退出
+        print("\n清理资源...")
+        try:
+            del inputs, outputs
+        except:
+            pass
+        try:
+            del patched_model, model, tokenizer
+        except:
+            pass
+        
+        # 执行清理
+        cleanup_resources(verbose=True)
+        print("✓ 资源清理完成")
+        
+        # 智能退出：检查是否有非守护线程阻止退出
+        import sys
+        import os
+        
+        blocking_threads = [t for t in threading.enumerate() 
+                           if t != threading.main_thread() and t.is_alive() and not t.daemon]
+        
+        if blocking_threads:
+            # 有非守护线程阻止退出，使用强制退出
+            print(f"\n检测到 {len(blocking_threads)} 个非守护线程（如 transformers 的自动转换线程）")
+            print("使用强制退出以确保程序立即结束...")
+            os._exit(0)  # 强制退出，跳过所有清理和atexit钩子
+        else:
+            # 没有阻塞线程，正常退出
+            print("\n准备退出...")
+            sys.exit(0)
 
     elif args.mode == "detect":
         # --- 检测模式 ---
@@ -214,6 +393,33 @@ def main():
         else:
             print(f"Result: Watermark NOT DETECTED (Score: {llr_score:.2f})")
         print("------------------------")
+        
+        # 清理资源
+        print("\n清理资源...")
+        try:
+            del detector, patched_model, model, tokenizer
+        except:
+            pass
+        
+        cleanup_resources(verbose=True)
+        print("✓ 资源清理完成")
+        
+        # 智能退出：检查是否有非守护线程阻止退出
+        import sys
+        import os
+        
+        blocking_threads = [t for t in threading.enumerate() 
+                           if t != threading.main_thread() and t.is_alive() and not t.daemon]
+        
+        if blocking_threads:
+            # 有非守护线程阻止退出，使用强制退出
+            print(f"\n检测到 {len(blocking_threads)} 个非守护线程（如 transformers 的自动转换线程）")
+            print("使用强制退出以确保程序立即结束...")
+            os._exit(0)  # 强制退出，跳过所有清理和atexit钩子
+        else:
+            # 没有阻塞线程，正常退出
+            print("\n准备退出...")
+            sys.exit(0)
     
     elif args.mode == "experiment":
         # --- 实验模式: 运行论文中的实验A-E ---
@@ -250,6 +456,32 @@ def main():
         
         print("\n所有实验完成!")
         print("结果已保存到 ./experiment_results/")
+        
+        # 清理资源
+        print("\n清理资源...")
+        try:
+            del model, tokenizer, dataloader
+        except:
+            pass
+        cleanup_resources(verbose=True)
+        print("✓ 资源清理完成")
+        
+        # 智能退出：检查是否有非守护线程阻止退出
+        import sys
+        import os
+        
+        blocking_threads = [t for t in threading.enumerate() 
+                           if t != threading.main_thread() and t.is_alive() and not t.daemon]
+        
+        if blocking_threads:
+            # 有非守护线程阻止退出，使用强制退出
+            print(f"\n检测到 {len(blocking_threads)} 个非守护线程（如 transformers 的自动转换线程）")
+            print("使用强制退出以确保程序立即结束...")
+            os._exit(0)  # 强制退出，跳过所有清理和atexit钩子
+        else:
+            # 没有阻塞线程，正常退出
+            print("\n准备退出...")
+            sys.exit(0)
 
 if __name__ == "__main__":
     main()

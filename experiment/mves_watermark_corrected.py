@@ -101,7 +101,19 @@ class MoEWatermarkForSwitch:
         batch_size, seq_len, num_experts = l_0.shape
         
         # 计算原始分布 p_0
+        # 确保 l_0 没有 inf 或 nan
+        l_0 = torch.where(torch.isnan(l_0), torch.zeros_like(l_0), l_0)
+        l_0 = torch.where(torch.isinf(l_0), torch.zeros_like(l_0), l_0)
+        # 限制 logits 的范围，避免极端值导致 softmax 溢出
+        l_0 = torch.clamp(l_0, min=-100.0, max=100.0)
         p_0 = F.softmax(l_0, dim=-1)
+        # 确保 p_0 有效
+        p_0 = torch.where(torch.isnan(p_0), torch.ones_like(p_0) / self.num_experts, p_0)
+        p_0 = torch.where(torch.isinf(p_0), torch.ones_like(p_0) / self.num_experts, p_0)
+        # 重新归一化
+        p_0_sum = p_0.sum(dim=-1, keepdim=True)
+        p_0_sum = torch.clamp(p_0_sum, min=1e-9)
+        p_0 = p_0 / p_0_sum
         
         # 生成确定性种子
         context_hash = self._get_context_hash(hidden_states)
@@ -138,7 +150,20 @@ class MoEWatermarkForSwitch:
         
         # 计算修改后的logits和分布
         l_1 = l_0 + delta_l
+        # 确保 l_1 没有 inf 或 nan
+        l_1 = torch.where(torch.isnan(l_1), torch.zeros_like(l_1), l_1)
+        l_1 = torch.where(torch.isinf(l_1), torch.zeros_like(l_1), l_1)
+        # 限制 logits 的范围，避免极端值导致 softmax 溢出
+        l_1 = torch.clamp(l_1, min=-100.0, max=100.0)
         p_1 = F.softmax(l_1, dim=-1)
+        
+        # 确保概率值有效（检查 nan 和 inf）
+        p_1 = torch.where(torch.isnan(p_1), torch.zeros_like(p_1), p_1)
+        p_1 = torch.where(torch.isinf(p_1), torch.ones_like(p_1) / self.num_experts, p_1)
+        # 重新归一化以确保和为 1
+        p_1_sum = p_1.sum(dim=-1, keepdim=True)
+        p_1_sum = torch.clamp(p_1_sum, min=1e-9)
+        p_1 = p_1 / p_1_sum
         
         return delta_l, p_0, p_1
     
@@ -164,16 +189,85 @@ class MoEWatermarkForSwitch:
             S_indices: Top-k激活索引 [batch, seq, k_top]
         """
         # 1. 计算原始 logits l_0 (论文定义3.2)
-        l_0 = original_forward(hidden_states)  # [batch*seq, num_experts] 或 [batch, seq, num_experts]
+        # Switch Transformers 的 router.forward() 返回 tuple: (router_mask, router_probs, router_logits)
+        router_output = original_forward(hidden_states)
         
-        # 处理维度
+        # 处理返回值：可能是单个 tensor 或 tuple
+        # 首先获取 batch_size 和 seq_len
+        if hidden_states.dim() == 3:
+            batch_size, seq_len, hidden_dim = hidden_states.shape
+        elif hidden_states.dim() == 2:
+            # [batch*seq, hidden_dim] 格式
+            batch_size_seq, hidden_dim = hidden_states.shape
+            # 需要推断 batch_size 和 seq_len（可能需要从外部传入）
+            # 暂时假设是单个序列
+            batch_size = 1
+            seq_len = batch_size_seq
+        else:
+            raise ValueError(f"Unexpected hidden_states shape: {hidden_states.shape}")
+        
+        if isinstance(router_output, tuple):
+            # Switch Transformers 格式: (router_mask, router_probs, router_logits)
+            if len(router_output) >= 3:
+                router_mask_orig, router_probs_orig, l_0 = router_output[0], router_output[1], router_output[2]
+                # 检查原始格式的维度
+                # 注意：我们需要保持与原始格式完全一致
+                orig_mask_shape = router_mask_orig.shape if router_mask_orig is not None else None
+                orig_probs_shape = router_probs_orig.shape if router_probs_orig is not None else None
+                
+                # 调试信息（仅在第一次调用时打印）
+                if not hasattr(self, '_debug_printed'):
+                    print(f"  原始 router_mask 形状: {orig_mask_shape}")
+                    print(f"  原始 router_probs 形状: {orig_probs_shape}")
+                    print(f"  原始 router_logits 形状: {l_0.shape}")
+                    # 检查原始 logits 是否包含无效值
+                    if torch.isnan(l_0).any():
+                        print(f"  警告: 原始 router_logits 包含 NaN!")
+                    if torch.isinf(l_0).any():
+                        print(f"  警告: 原始 router_logits 包含 Inf!")
+                    self._debug_printed = True
+                
+                # 检查并修复原始 l_0 中的无效值（如果存在）
+                if torch.isnan(l_0).any() or torch.isinf(l_0).any():
+                    l_0 = torch.where(torch.isnan(l_0), torch.zeros_like(l_0), l_0)
+                    l_0 = torch.where(torch.isinf(l_0), torch.zeros_like(l_0), l_0)
+                    l_0 = torch.clamp(l_0, min=-100.0, max=100.0)
+                
+                if router_mask_orig.dim() == 3:
+                    expected_shape_3d = True
+                elif router_mask_orig.dim() == 2:
+                    expected_shape_3d = False
+                else:
+                    expected_shape_3d = False
+            elif len(router_output) == 2:
+                # 某些版本可能只有 (router_probs, router_logits)
+                router_probs_orig, l_0 = router_output[0], router_output[1]
+                router_mask_orig = None
+                expected_shape_3d = router_probs_orig.dim() == 3 if router_probs_orig is not None else False
+            else:
+                # 如果只有一个元素，假设是 router_logits
+                l_0 = router_output[0]
+                router_mask_orig = None
+                router_probs_orig = None
+                expected_shape_3d = l_0.dim() == 3
+        else:
+            # 单个 tensor 返回值
+            l_0 = router_output
+            router_mask_orig = None
+            router_probs_orig = None
+            expected_shape_3d = l_0.dim() == 3
+        
+        # 处理 l_0 的维度
         if l_0.dim() == 2:
-            batch_size, seq_len = hidden_states.shape[:2]
-            l_0 = l_0.view(batch_size, seq_len, -1)
+            # [batch*seq, num_experts] -> [batch, seq, num_experts]
+            num_experts = l_0.shape[-1]
+            l_0 = l_0.view(batch_size, seq_len, num_experts)
+            hidden_states_reshaped = hidden_states.view(batch_size, seq_len, -1) if hidden_states.dim() == 2 else hidden_states
+        elif l_0.dim() == 3:
+            # [batch, seq, num_experts]
             hidden_states_reshaped = hidden_states
         else:
-            batch_size, seq_len = hidden_states.shape[:2]
-            hidden_states_reshaped = hidden_states
+            raise ValueError(f"Unexpected l_0 shape: {l_0.shape}")
         
         # 2. 生成偏置向量 Δl, 并计算 p_0 和 p_1
         delta_l, p_0, p_1 = self.get_bias_vector(hidden_states_reshaped, l_0)
@@ -185,27 +279,118 @@ class MoEWatermarkForSwitch:
         # 使用 l_1 进行 Top-k 选择
         top_k_scores, S_indices = torch.topk(p_1, self.k_top, dim=-1)
         
-        # 归一化 top-k 得分
-        top_k_scores = top_k_scores / (top_k_scores.sum(dim=-1, keepdim=True) + 1e-9)
+        # 归一化 top-k 得分，确保概率有效
+        top_k_sum = top_k_scores.sum(dim=-1, keepdim=True)
+        # 避免除零和无效值
+        top_k_sum = torch.clamp(top_k_sum, min=1e-9)
+        top_k_scores = top_k_scores / top_k_sum
+        
+        # 确保概率值在有效范围内 [0, 1]，且没有 inf 或 nan
+        top_k_scores = torch.clamp(top_k_scores, min=0.0, max=1.0)
+        top_k_scores = torch.where(torch.isnan(top_k_scores), torch.zeros_like(top_k_scores), top_k_scores)
+        top_k_scores = torch.where(torch.isinf(top_k_scores), torch.ones_like(top_k_scores) / self.k_top, top_k_scores)
+        
+        # 重新归一化以确保和为 1
+        top_k_sum = top_k_scores.sum(dim=-1, keepdim=True)
+        top_k_sum = torch.clamp(top_k_sum, min=1e-9)
+        top_k_scores = top_k_scores / top_k_sum
         
         # 5. 存储检测数据
         self._detection_data.append((p_0, p_1, S_indices))
         
         # 6. 返回路由logits (需要与原始格式一致)
         # Switch Transformer需要稀疏的gate_logits
+        # 注意：根据 mlp.forward() 的期望，router_mask 应该是 3D 格式
         batch_size, seq_len, _ = l_1.shape
-        router_logits = torch.zeros(
+        
+        # 创建 2D 格式的 router_logits（用于某些情况）
+        router_logits_2d = torch.zeros(
             (batch_size * seq_len, self.num_experts),
             dtype=l_1.dtype,
             device=self.device
         )
-        router_logits.scatter_(
+        router_logits_2d.scatter_(
             -1,
             S_indices.view(-1, self.k_top),
             top_k_scores.view(-1, self.k_top)
         )
         
-        return router_logits, p_0, p_1, S_indices
+        # 如果原始返回是 tuple，我们也返回 tuple
+        # Switch Transformers 格式: (router_mask, router_probs, router_logits)
+        # 重要：我们需要保持与原始返回格式完全一致
+        if router_mask_orig is not None and router_probs_orig is not None:
+            # 检查原始格式的维度和形状
+            orig_mask_shape = router_mask_orig.shape
+            orig_probs_shape = router_probs_orig.shape
+            
+            # 根据原始格式创建返回值
+            # router_mask: [batch_size, seq_len, num_experts]
+            # 注意：router_mask 应该是概率分布，用于 argmax 选择专家
+            router_mask_new = torch.zeros(
+                (batch_size, seq_len, self.num_experts),
+                dtype=l_1.dtype,
+                device=self.device
+            )
+            router_mask_new.scatter_(
+                -1,
+                S_indices,  # [batch, seq, k_top]
+                top_k_scores  # [batch, seq, k_top]
+            )
+            # 确保 router_mask 的值有效
+            router_mask_new = torch.clamp(router_mask_new, min=0.0, max=1.0)
+            router_mask_new = torch.where(torch.isnan(router_mask_new), torch.zeros_like(router_mask_new), router_mask_new)
+            router_mask_new = torch.where(torch.isinf(router_mask_new), torch.zeros_like(router_mask_new), router_mask_new)
+            
+            # router_probs: 根据原始形状决定
+            # 如果原始是 [batch, seq, 1]，说明是聚合后的概率（所有专家的加权和）
+            # 如果原始是 [batch, seq, num_experts]，说明是每个专家的概率
+            if orig_probs_shape[-1] == 1:
+                # 原始是聚合格式 [batch, seq, 1]
+                # 我们需要计算所有专家的加权和
+                # router_probs 应该是所有 top-k 专家的概率之和（应该接近 1.0，因为我们已经归一化了）
+                router_probs_sum = top_k_scores.sum(dim=-1, keepdim=True)  # [batch, seq, 1]
+                # 确保值在有效范围内
+                router_probs_new = torch.clamp(router_probs_sum, min=0.0, max=1.0)
+                router_probs_new = torch.where(torch.isnan(router_probs_new), torch.ones_like(router_probs_new), router_probs_new)
+                router_probs_new = torch.where(torch.isinf(router_probs_new), torch.ones_like(router_probs_new), router_probs_new)
+            else:
+                # 原始是 [batch, seq, num_experts] 格式
+                router_probs_new = torch.zeros(
+                    (batch_size, seq_len, self.num_experts),
+                    dtype=l_1.dtype,
+                    device=self.device
+                )
+                router_probs_new.scatter_(
+                    -1,
+                    S_indices,
+                    top_k_scores
+                )
+                # 确保值在有效范围内
+                router_probs_new = torch.clamp(router_probs_new, min=0.0, max=1.0)
+                router_probs_new = torch.where(torch.isnan(router_probs_new), torch.zeros_like(router_probs_new), router_probs_new)
+                router_probs_new = torch.where(torch.isinf(router_probs_new), torch.zeros_like(router_probs_new), router_probs_new)
+            
+            # router_logits: [batch_size, seq_len, num_experts]
+            router_logits_new = torch.zeros(
+                (batch_size, seq_len, self.num_experts),
+                dtype=l_1.dtype,
+                device=self.device
+            )
+            router_logits_new.scatter_(
+                -1,
+                S_indices,
+                top_k_scores
+            )
+            # 确保 router_logits 的值有效（logits 可以是负数，但不能是 inf 或 nan）
+            router_logits_new = torch.where(torch.isnan(router_logits_new), torch.zeros_like(router_logits_new), router_logits_new)
+            router_logits_new = torch.where(torch.isinf(router_logits_new), torch.zeros_like(router_logits_new), router_logits_new)
+            # 限制 logits 的范围，避免极端值
+            router_logits_new = torch.clamp(router_logits_new, min=-100.0, max=100.0)
+            
+            return (router_mask_new, router_probs_new, router_logits_new), p_0, p_1, S_indices
+        else:
+            # 单个 tensor 返回
+            return router_logits_2d, p_0, p_1, S_indices
     
     def get_detection_data(self) -> List[Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]:
         """获取检测数据"""
@@ -273,17 +458,22 @@ def patch_switch_model_with_watermark(
         return model
     
     # 获取decoder blocks（支持多种属性名）
+    # SwitchTransformersStack 可能使用不同的属性名
     decoder_blocks = None
-    if hasattr(decoder, 'block'):
-        decoder_blocks = decoder.block
-    elif hasattr(decoder, 'layers'):
-        decoder_blocks = decoder.layers
-    elif hasattr(decoder, 'blocks'):
-        decoder_blocks = decoder.blocks
-    elif hasattr(decoder, 'transformer_blocks'):
-        decoder_blocks = decoder.transformer_blocks
-    else:
+    
+    # 尝试多种可能的属性名
+    possible_attrs = ['block', 'layers', 'blocks', 'transformer_blocks', 'decoder_layers']
+    for attr_name in possible_attrs:
+        if hasattr(decoder, attr_name):
+            decoder_blocks = getattr(decoder, attr_name)
+            if decoder_blocks is not None and len(decoder_blocks) > 0:
+                print(f"  找到decoder blocks: {attr_name} (长度: {len(decoder_blocks)})")
+                break
+    
+    if decoder_blocks is None or len(decoder_blocks) == 0:
         print("警告: 未找到decoder blocks，无法patch")
+        print(f"  decoder类型: {type(decoder).__name__}")
+        print(f"  decoder属性: {[attr for attr in dir(decoder) if not attr.startswith('_')][:20]}")
         return model
     
     # 遍历所有层，查找MoE router
@@ -291,27 +481,59 @@ def patch_switch_model_with_watermark(
         router = None
         
         # 方式1: layer.layer[1] (Switch Transformer标准结构)
-        if hasattr(layer, 'layer') and len(layer.layer) > 1:
-            ffn_layer = layer.layer[1]
+        # SwitchTransformersBlock 通常有 layer 属性，其中 layer[1] 是 FFN 层
+        if hasattr(layer, 'layer'):
+            layer_list = layer.layer
+            if isinstance(layer_list, (list, tuple)) and len(layer_list) > 1:
+                ffn_layer = layer_list[1]
+                # 检查 ffn_layer.mlp.router
+                if hasattr(ffn_layer, 'mlp') and hasattr(ffn_layer.mlp, 'router'):
+                    router = ffn_layer.mlp.router
+                # 检查 ffn_layer.router
+                elif hasattr(ffn_layer, 'router'):
+                    router = ffn_layer.router
+                # 检查 ffn_layer.expert_router
+                elif hasattr(ffn_layer, 'expert_router'):
+                    router = ffn_layer.expert_router
+            # 如果 layer 是 ModuleList，尝试遍历
+            elif hasattr(layer_list, '__iter__'):
+                for sublayer in layer_list:
+                    if hasattr(sublayer, 'mlp') and hasattr(sublayer.mlp, 'router'):
+                        router = sublayer.mlp.router
+                        break
+                    elif hasattr(sublayer, 'router'):
+                        router = sublayer.router
+                        break
+        
+        # 方式2: layer.feed_forward
+        if router is None and hasattr(layer, 'feed_forward'):
+            ffn_layer = layer.feed_forward
             if hasattr(ffn_layer, 'mlp') and hasattr(ffn_layer.mlp, 'router'):
                 router = ffn_layer.mlp.router
             elif hasattr(ffn_layer, 'router'):
                 router = ffn_layer.router
-        # 方式2: layer.feed_forward
-        elif hasattr(layer, 'feed_forward'):
-            ffn_layer = layer.feed_forward
-            if hasattr(ffn_layer, 'router'):
-                router = ffn_layer.router
-            elif hasattr(ffn_layer, 'mlp') and hasattr(ffn_layer.mlp, 'router'):
-                router = ffn_layer.mlp.router
+            elif hasattr(ffn_layer, 'expert_router'):
+                router = ffn_layer.expert_router
+        
         # 方式3: layer.mlp
-        elif hasattr(layer, 'mlp'):
+        if router is None and hasattr(layer, 'mlp'):
             ffn_layer = layer.mlp
             if hasattr(ffn_layer, 'router'):
                 router = ffn_layer.router
+            elif hasattr(ffn_layer, 'expert_router'):
+                router = ffn_layer.expert_router
+        
         # 方式4: 直接检查layer是否有router
-        elif hasattr(layer, 'router'):
+        if router is None and hasattr(layer, 'router'):
             router = layer.router
+        
+        # 方式5: 检查 layer.block_sparse_moe (某些架构)
+        if router is None and hasattr(layer, 'block_sparse_moe'):
+            moe = layer.block_sparse_moe
+            if hasattr(moe, 'router'):
+                router = moe.router
+            elif hasattr(moe, 'gate'):
+                router = moe.gate
         
         if router is not None:
             try:
@@ -322,14 +544,22 @@ def patch_switch_model_with_watermark(
                 def make_new_forward(orig_fwd, router_obj, layer_id):
                     def new_forward(hidden_states: torch.Tensor):
                         # 调用水印逻辑
-                        router_logits, p_0, p_1, S_indices = \
-                            watermark_injector.watermarked_router_forward(orig_fwd, hidden_states)
+                        result = watermark_injector.watermarked_router_forward(orig_fwd, hidden_states)
+                        
+                        # 处理返回值：格式总是 (router_output, p_0, p_1, S_indices)
+                        # router_output 可能是 tuple (router_mask, router_probs, router_logits) 或单个 tensor
+                        if isinstance(result, tuple) and len(result) == 4:
+                            router_output, p_0, p_1, S_indices = result
+                        else:
+                            # 兼容旧格式（不应该发生，但以防万一）
+                            raise ValueError(f"Unexpected return format from watermarked_router_forward: {type(result)}")
                         
                         # 将检测器信息附加到router对象上
                         router_obj._watermark_detection_data = (p_0, p_1, S_indices)
                         router_obj._layer_idx = layer_id
                         
-                        return router_logits
+                        # 返回 router_output（可能是 tuple 或单个 tensor）
+                        return router_output
                     return new_forward
                 
                 # 应用patch
@@ -346,7 +576,31 @@ def patch_switch_model_with_watermark(
         if len(decoder_blocks) > 0:
             first_layer = decoder_blocks[0]
             print(f"  第一层类型: {type(first_layer).__name__}")
-            print(f"  第一层属性: {[attr for attr in dir(first_layer) if not attr.startswith('_')][:10]}")
+            print(f"  第一层属性: {[attr for attr in dir(first_layer) if not attr.startswith('_')][:15]}")
+            
+            # 详细检查第一层的结构
+            if hasattr(first_layer, 'layer'):
+                layer_list = first_layer.layer
+                print(f"  layer属性类型: {type(layer_list).__name__}")
+                if isinstance(layer_list, (list, tuple)) and len(layer_list) > 0:
+                    print(f"  layer长度: {len(layer_list)}")
+                    for i, sublayer in enumerate(layer_list[:3]):  # 只检查前3个
+                        print(f"    layer[{i}]类型: {type(sublayer).__name__}")
+                        if i == 1:  # FFN层通常是layer[1]
+                            print(f"    layer[1]属性: {[attr for attr in dir(sublayer) if not attr.startswith('_')][:15]}")
+                            if hasattr(sublayer, 'mlp'):
+                                print(f"      mlp属性: {[attr for attr in dir(sublayer.mlp) if not attr.startswith('_')][:15]}")
+                                if hasattr(sublayer.mlp, 'router'):
+                                    print(f"      ✓ 找到 router!")
+                                else:
+                                    print(f"      ✗ 未找到 router")
+                elif hasattr(layer_list, '__iter__'):
+                    print(f"  layer是可迭代对象")
+                    try:
+                        for i, sublayer in enumerate(list(layer_list)[:3]):
+                            print(f"    layer[{i}]类型: {type(sublayer).__name__}")
+                    except:
+                        pass
     else:
         print(f"✓ 成功patch {patched_layers} 个MoE层")
     
@@ -359,21 +613,110 @@ def get_watermark_data_from_switch_model(model: AutoModelForSeq2SeqLM) -> List[T
     """
     从switch模型中提取检测数据
     
+    注意：提取路径必须与 patch_switch_model_with_watermark 中的路径一致
+    
     Returns:
         detection_data: [(p_0, p_1, S_indices), ...]
     """
     data = []
     
-    if hasattr(model, 'decoder') and hasattr(model.decoder, 'block'):
-        for layer in model.decoder.block:
-            if hasattr(layer, 'layer') and len(layer.layer) > 1:
-                ffn_layer = layer.layer[1]
+    # 获取decoder（支持多种架构）
+    decoder = None
+    if hasattr(model, 'decoder'):
+        decoder = model.decoder
+    elif hasattr(model, 'model') and hasattr(model.model, 'decoder'):
+        decoder = model.model.decoder
+    else:
+        return data
+    
+    # 获取decoder blocks（支持多种属性名，与patch逻辑一致）
+    decoder_blocks = None
+    if hasattr(decoder, 'block'):
+        decoder_blocks = decoder.block
+    elif hasattr(decoder, 'layers'):
+        decoder_blocks = decoder.layers
+    elif hasattr(decoder, 'blocks'):
+        decoder_blocks = decoder.blocks
+    elif hasattr(decoder, 'transformer_blocks'):
+        decoder_blocks = decoder.transformer_blocks
+    else:
+        return data
+    
+    # 遍历所有层，查找检测数据（与patch逻辑一致）
+    for layer_idx, layer in enumerate(decoder_blocks):
+        router = None
+        
+        # 方式1: layer.layer[1] (Switch Transformer标准结构)
+        # 注意：必须与 patch_switch_model_with_watermark 中的逻辑完全一致
+        if hasattr(layer, 'layer'):
+            layer_list = layer.layer
+            if isinstance(layer_list, (list, tuple)) and len(layer_list) > 1:
+                ffn_layer = layer_list[1]
+                # 检查 ffn_layer.mlp.router
                 if hasattr(ffn_layer, 'mlp') and hasattr(ffn_layer.mlp, 'router'):
                     router = ffn_layer.mlp.router
-                    if hasattr(router, '_watermark_detection_data'):
-                        data.append(router._watermark_detection_data)
-                        # 清除数据
-                        del router._watermark_detection_data
+                # 检查 ffn_layer.router
+                elif hasattr(ffn_layer, 'router'):
+                    router = ffn_layer.router
+                # 检查 ffn_layer.expert_router
+                elif hasattr(ffn_layer, 'expert_router'):
+                    router = ffn_layer.expert_router
+            # 如果 layer 是 ModuleList，尝试遍历
+            elif hasattr(layer_list, '__iter__'):
+                for sublayer in layer_list:
+                    if hasattr(sublayer, 'mlp') and hasattr(sublayer.mlp, 'router'):
+                        router = sublayer.mlp.router
+                        break
+                    elif hasattr(sublayer, 'router'):
+                        router = sublayer.router
+                        break
+        
+        # 方式2: layer.feed_forward
+        if router is None and hasattr(layer, 'feed_forward'):
+            ffn_layer = layer.feed_forward
+            if hasattr(ffn_layer, 'mlp') and hasattr(ffn_layer.mlp, 'router'):
+                router = ffn_layer.mlp.router
+            elif hasattr(ffn_layer, 'router'):
+                router = ffn_layer.router
+            elif hasattr(ffn_layer, 'expert_router'):
+                router = ffn_layer.expert_router
+        
+        # 方式3: layer.mlp
+        if router is None and hasattr(layer, 'mlp'):
+            ffn_layer = layer.mlp
+            if hasattr(ffn_layer, 'router'):
+                router = ffn_layer.router
+            elif hasattr(ffn_layer, 'expert_router'):
+                router = ffn_layer.expert_router
+        
+        # 方式4: 直接检查layer是否有router
+        if router is None and hasattr(layer, 'router'):
+            router = layer.router
+        
+        # 方式5: 检查 layer.block_sparse_moe (某些架构)
+        if router is None and hasattr(layer, 'block_sparse_moe'):
+            moe = layer.block_sparse_moe
+            if hasattr(moe, 'router'):
+                router = moe.router
+            elif hasattr(moe, 'gate'):
+                router = moe.gate
+        
+        # 提取检测数据
+        if router is not None:
+            if hasattr(router, '_watermark_detection_data'):
+                detection_data = router._watermark_detection_data
+                if detection_data is not None:
+                    data.append(detection_data)
+                    # 清除数据（用后即焚）
+                    del router._watermark_detection_data
+    
+    # 调试信息（仅在第一次调用时打印）
+    if not hasattr(get_watermark_data_from_switch_model, '_debug_printed'):
+        if len(data) == 0:
+            print(f"  警告: 未提取到任何检测数据（检查了 {len(decoder_blocks)} 层）")
+        else:
+            print(f"  成功提取到 {len(data)} 个检测数据")
+        get_watermark_data_from_switch_model._debug_printed = True
     
     return data
 

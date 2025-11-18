@@ -111,6 +111,39 @@ pdflatex moe_watermark_paraphrase_attack.tex  # 第二次编译
 3. **中文支持**：中文版需要使用 XeLaTeX 或 LuaLaTeX 编译
 4. **多次编译**：某些功能（如交叉引用）需要多次编译才能正确生成
 
+## WSL 环境测试
+
+如果你使用 WSL (Windows Subsystem for Linux) 环境，请参考：
+
+- **WSL 测试指南**: [`experiment/WSL_TEST_GUIDE.md`](experiment/WSL_TEST_GUIDE.md)
+- **快速测试**: 在 WSL 中运行 `python experiment/test_wsl_setup.py`
+
+项目已自动检测运行环境（Windows/WSL/Linux），并会使用相应的缓存配置。
+
+## 水印检测指南
+
+**重要提示**：检测水印时，**必须使用与嵌入时相同的 `secret_key`**！
+
+### 快速开始
+
+```bash
+# 1. 嵌入水印
+python experiment/main.py --mode embed \
+    --model_name google/switch-base-8 \
+    --prompt "Your text" \
+    --secret_key "my_secret_key_123"
+
+# 2. 检测水印（使用相同的 secret_key）
+python experiment/main.py --mode detect \
+    --model_name google/switch-base-8 \
+    --text_to_check "生成的完整文本" \
+    --secret_key "my_secret_key_123"
+```
+
+### 详细文档
+
+- **检测指南**: [`experiment/DETECTION_GUIDE.md`](experiment/DETECTION_GUIDE.md) - 包含完整的检测说明、参数解释和常见问题
+
 ## 贡献
 
 如有问题或建议，请提交 Issue 或 Pull Request。
