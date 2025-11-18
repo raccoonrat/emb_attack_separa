@@ -1,4 +1,6 @@
-# 水印检测指南
+# 水印检测详细指南
+
+> **注意**：本文档提供检测模式的详细说明。快速开始请参考根目录的 [`README.md`](../README.md)。
 
 ## 重要提示：`secret_key` 的作用
 
@@ -36,15 +38,15 @@ python main.py --mode detect \
     --secret_key "my_secret_key_123" \  # 必须与嵌入时相同！
     --c_star 2.0 \                       # 安全系数（默认 2.0）
     --gamma_design 0.03 \                # 设计攻击强度（默认 0.03）
-    --tau_alpha 20.0                     # 检测阈值（默认 20.0）
+    --tau_alpha 5.0                      # 检测阈值（默认 5.0，建议标定）
 ```
 
 ### 3. 参数说明
 
 - `--secret_key`: **必须与嵌入时使用的相同**
-- `--c_star`: 安全系数 c*（默认 2.0）
-- `--gamma_design`: 设计攻击强度 γ（默认 0.03）
-- `--tau_alpha`: LLR 检测阈值（默认 20.0）
+- `--c_star`: 安全系数 c*（默认 2.0，应与嵌入时相同）
+- `--gamma_design`: 设计攻击强度 γ（默认 0.03，应与嵌入时相同）
+- `--tau_alpha`: LLR 检测阈值（默认 5.0，应通过H0假设下的实验标定）
 
 ### 4. 检测输出
 
@@ -117,7 +119,7 @@ python main.py --mode detect \
 
 ### Q: 如何选择合适的阈值？
 
-使用 `calibrate` 模式来标定阈值：
+**推荐方法**：使用标定模式（需要准备无水印样本）
 
 ```bash
 python main.py --mode calibrate \
@@ -125,6 +127,15 @@ python main.py --mode calibrate \
     --num_calib_samples 100 \
     --secret_key "my_key_123"
 ```
+
+**临时方法**：根据实际LLR分数调整
+
+如果检测时LLR分数为 8.28，可以设置：
+```bash
+--tau_alpha 8.0  # 略低于LLR分数
+```
+
+**详细理论说明**：请参考 [`THRESHOLD_EXPLANATION.md`](THRESHOLD_EXPLANATION.md)
 
 ### Q: 检测时可以使用不同的 epsilon 吗？
 

@@ -1,104 +1,54 @@
-MoE 可证鲁棒水印方案 (Provably Robust MoE Watermark)
-============================================
+# Experiment 目录说明
 
-本项目基于《Signal-Attack Decoupling in MoE Watermarks》及其工程方案 (`align_to_proofs.md`)，提供了一个基于 MoE Gating 机制的可证鲁棒水印方案的 Python 实现。
-核心特性
-----
+> **主要文档**：请查看根目录的 [`README.md`](../README.md) 获取完整的使用手册和项目说明。
 
-* **信号-攻击解耦**: 水印嵌入在专家激活模式（$\mathcal{S}_B = \{0,1\}^K$），而攻击发生在输入文本空间（$\mathcal{X}$），实现 $\mathcal{S}_B \cap \mathcal{X} = \emptyset$。
+本目录包含 MoE 水印方案的 Python 实现代码。
 
-* **可证鲁棒性**: 方案的鲁棒性衰减满足 $O(\sqrt{\gamma})$，优于传统方案的 $O(\gamma)$。
+## 快速开始
 
-* **最优检测**: 采用基于 Neyman-Pearson 引理的 LLR（对数似然比）检测器。
+```bash
+# 1. 嵌入水印
+python main.py --mode embed \
+    --model_name google/switch-base-8 \
+    --prompt "Your text" \
+    --secret_key "my_secret_key_123"
 
-* **参数化安全**: 引入“安全系数 $c$”，将水印强度 $\epsilon$ 与设计的攻击强度 $\gamma$ 关联（$\epsilon = c^2\gamma$），实现鲁棒性与性能的可控权衡。
+# 2. 检测水印
+python main.py --mode detect \
+    --model_name google/switch-base-8 \
+    --text_to_check "生成的完整文本" \
+    --secret_key "my_secret_key_123"
+```
 
-项目结构
-----
+## 核心文件
 
-    .
-    ├── main.py             # 主程序入口 (运行标定、嵌入、检测)
-    ├── moe_watermark.py    # MoE Gating 水印核心实现 (模型 Patch)
-    ├── calibration.py      # 参数标定 (Lg, C, c*)
-    ├── detector.py         # LLR 水印检测器
-    ├── attacks.py          # 攻击模拟 (Paraphrase) 与 γ 估算
-    ├── requirements.txt    # Python 依赖库
-    └── README.md           # 本文档
+- `main.py` - 主程序入口（支持 embed/detect/calibrate/experiment 模式）
+- `detector.py` - LLR 水印检测器实现
+- `mves_watermark_corrected.py` - 水印嵌入实现（Switch Transformers）
+- `mves_config.py` - 配置管理
+- `calibration.py` - 参数标定工具
 
-安装
---
+## 详细文档
 
-### 方法1：使用 Conda 环境（推荐）
+- **使用手册**: [`../README.md`](../README.md) - 完整的使用说明和快速开始
+- **检测指南**: [`DETECTION_GUIDE.md`](DETECTION_GUIDE.md) - 检测模式的详细说明
+- **阈值标定**: [`THRESHOLD_EXPLANATION.md`](THRESHOLD_EXPLANATION.md) - LLR 阈值理论依据
+- **WSL 配置**: [`WSL_TEST_GUIDE.md`](WSL_TEST_GUIDE.md) - WSL 环境配置说明
 
-1. 安装 Miniconda（如果尚未安装）
-   - 详见 `INSTALL.md` 中的安装指南
-   - 或运行：`winget install Anaconda.Miniconda3`
+## 环境要求
 
-2. 创建并激活 conda 环境：
-   ```bash
-   cd experiment
-   conda env create -f environment.yml
-   conda activate emb_attack_separa
-   ```
+- Python 3.10+
+- PyTorch（支持 CUDA 可选）
+- Transformers
+- 详见 `requirements.txt`
 
-### 方法2：使用 pip 虚拟环境
+## 安装
 
-1. 克隆本项目
+```bash
+# Conda（推荐）
+conda env create -f environment.yml
+conda activate emb_attack_separa
 
-2. 创建虚拟环境：
-   ```bash
-   python -m venv venv
-   # Windows
-   venv\Scripts\activate
-   # Linux/Mac
-   source venv/bin/activate
-   ```
-
-3. 安装依赖:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. （可选）根据您的 `torch` 版本和 CUDA 配置，确保 `torch` 已正确安装。
-
-使用说明
-----
-
-本项目通过 `main.py` 提供了三种操作模式。
-
-### 1. 模式一: `calibrate` (参数标定)
-
-此模式用于运行 `calibration.py` 中的算法，标定系统的核心常数 $C$ 和最优安全系数 $c^*$。
-    python main.py --mode calibrate \
-                   --model_name "mistralai/Mixtral-8x7B-v0.1" \
-                   --dataset_name "wikitext" \
-                   --dataset_split "train" \
-                   --num_calib_samples 1000
-
-* 此过程计算密集，将输出标定结果（$L_g$, $C_{prop}$, $C_{stability}$, $C$, $c^*$），并建议将其保存到配置文件中（未来扩展）。
-
-### 2. 模式二: `embed` (水印嵌入与生成)
-
-使用标定好的参数（或默认值）来嵌入水印并生成文本。
-    python main.py --mode embed \
-                   --model_name "mistralai/Mixtral-8x7B-v0.1" \
-                   --prompt "Once upon a time, in a land far, far away," \
-                   --secret_key "my_secret_key_123"
-
-* 程序将加载模型，应用水印 patch，然后生成水马文。
-
-### 3. 模式三: `detect` (水印检测)
-
-检测给定文本是否包含水印。
-    # 待检测的文本
-    TEXT_TO_CHECK="... (此处为待检测的文本) ..."
-
-    python main.py --mode detect \
-                   --model_name "mistralai/Mixtral-8x7B-v0.1" \
-                   --text_to_check "$TEXT_TO_CHECK" \
-                   --secret_key "my_secret_key_123" \
-                   --attack "paraphrase" # 可选：在检测前应用攻击
-
-* `--attack "paraphrase"`: 模拟对手在检测前进行释义攻击，以测试鲁棒性。
-
-* 程序将输出 LLR 统计量以及检测结果（Detected / Not Detected）。
+# 或 pip
+pip install -r requirements.txt
+```

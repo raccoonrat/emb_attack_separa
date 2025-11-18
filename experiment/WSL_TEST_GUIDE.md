@@ -1,5 +1,7 @@
 # WSL 环境测试指南
 
+> **注意**：本文档提供WSL环境的详细配置说明。快速开始请参考根目录的 [`README.md`](../README.md)。
+
 本指南帮助你在 WSL (Windows Subsystem for Linux) 环境下测试本项目。
 
 ## 一、前置准备
