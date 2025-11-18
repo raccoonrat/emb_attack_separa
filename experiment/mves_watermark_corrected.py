@@ -262,39 +262,91 @@ def patch_switch_model_with_watermark(
     # MoE层在decoder的FFN中
     patched_layers = 0
     
-    if hasattr(model, 'decoder') and hasattr(model.decoder, 'block'):
-        for layer_idx, layer in enumerate(model.decoder.block):
-            # Switch Transformer的MoE在layer.layer[1] (FFN层)
-            if hasattr(layer, 'layer') and len(layer.layer) > 1:
-                ffn_layer = layer.layer[1]
+    # 获取decoder（支持多种架构）
+    decoder = None
+    if hasattr(model, 'decoder'):
+        decoder = model.decoder
+    elif hasattr(model, 'model') and hasattr(model.model, 'decoder'):
+        decoder = model.model.decoder
+    else:
+        print("警告: 未找到decoder，无法patch")
+        return model
+    
+    # 获取decoder blocks（支持多种属性名）
+    decoder_blocks = None
+    if hasattr(decoder, 'block'):
+        decoder_blocks = decoder.block
+    elif hasattr(decoder, 'layers'):
+        decoder_blocks = decoder.layers
+    elif hasattr(decoder, 'blocks'):
+        decoder_blocks = decoder.blocks
+    elif hasattr(decoder, 'transformer_blocks'):
+        decoder_blocks = decoder.transformer_blocks
+    else:
+        print("警告: 未找到decoder blocks，无法patch")
+        return model
+    
+    # 遍历所有层，查找MoE router
+    for layer_idx, layer in enumerate(decoder_blocks):
+        router = None
+        
+        # 方式1: layer.layer[1] (Switch Transformer标准结构)
+        if hasattr(layer, 'layer') and len(layer.layer) > 1:
+            ffn_layer = layer.layer[1]
+            if hasattr(ffn_layer, 'mlp') and hasattr(ffn_layer.mlp, 'router'):
+                router = ffn_layer.mlp.router
+            elif hasattr(ffn_layer, 'router'):
+                router = ffn_layer.router
+        # 方式2: layer.feed_forward
+        elif hasattr(layer, 'feed_forward'):
+            ffn_layer = layer.feed_forward
+            if hasattr(ffn_layer, 'router'):
+                router = ffn_layer.router
+            elif hasattr(ffn_layer, 'mlp') and hasattr(ffn_layer.mlp, 'router'):
+                router = ffn_layer.mlp.router
+        # 方式3: layer.mlp
+        elif hasattr(layer, 'mlp'):
+            ffn_layer = layer.mlp
+            if hasattr(ffn_layer, 'router'):
+                router = ffn_layer.router
+        # 方式4: 直接检查layer是否有router
+        elif hasattr(layer, 'router'):
+            router = layer.router
+        
+        if router is not None:
+            try:
+                # 保存原始的forward方法
+                original_forward = router.forward.__get__(router)
                 
-                # 查找MoE router
-                if hasattr(ffn_layer, 'mlp') and hasattr(ffn_layer.mlp, 'router'):
-                    router = ffn_layer.mlp.router
-                    
-                    # 保存原始的forward方法
-                    original_forward = router.forward.__get__(router)
-                    
-                    # 创建新的forward方法
-                    def make_new_forward(orig_fwd, router_obj, layer_id):
-                        def new_forward(hidden_states: torch.Tensor):
-                            # 调用水印逻辑
-                            router_logits, p_0, p_1, S_indices = \
-                                watermark_injector.watermarked_router_forward(orig_fwd, hidden_states)
-                            
-                            # 将检测器信息附加到router对象上
-                            router_obj._watermark_detection_data = (p_0, p_1, S_indices)
-                            router_obj._layer_idx = layer_id
-                            
-                            return router_logits
-                        return new_forward
-                    
-                    # 应用patch
-                    router.forward = make_new_forward(original_forward, router, layer_idx)
-                    patched_layers += 1
+                # 创建新的forward方法
+                def make_new_forward(orig_fwd, router_obj, layer_id):
+                    def new_forward(hidden_states: torch.Tensor):
+                        # 调用水印逻辑
+                        router_logits, p_0, p_1, S_indices = \
+                            watermark_injector.watermarked_router_forward(orig_fwd, hidden_states)
+                        
+                        # 将检测器信息附加到router对象上
+                        router_obj._watermark_detection_data = (p_0, p_1, S_indices)
+                        router_obj._layer_idx = layer_id
+                        
+                        return router_logits
+                    return new_forward
+                
+                # 应用patch
+                router.forward = make_new_forward(original_forward, router, layer_idx)
+                patched_layers += 1
+            except Exception as e:
+                print(f"警告: Layer {layer_idx} patch失败: {e}")
+                continue
     
     if patched_layers == 0:
         print("警告: 未找到MoE层，可能需要手动适配模型架构")
+        print(f"  模型类型: {type(model).__name__}")
+        print(f"  decoder类型: {type(decoder).__name__}")
+        if len(decoder_blocks) > 0:
+            first_layer = decoder_blocks[0]
+            print(f"  第一层类型: {type(first_layer).__name__}")
+            print(f"  第一层属性: {[attr for attr in dir(first_layer) if not attr.startswith('_')][:10]}")
     else:
         print(f"✓ 成功patch {patched_layers} 个MoE层")
     

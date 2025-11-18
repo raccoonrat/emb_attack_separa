@@ -105,28 +105,89 @@ def load_model_optimized(model_name="google/switch-base-8", use_8bit=False, max_
 
 
 def verify_switch_architecture(model):
-    """验证switch-base-8架构"""
+    """验证switch-base-8架构（增强版，带详细调试信息）"""
     print("\n验证模型架构...")
+    
+    # 打印模型类型
+    print(f"模型类型: {type(model).__name__}")
+    print(f"模型配置: {type(model.config).__name__}")
     
     # 检查基本结构
     if not hasattr(model, 'decoder'):
         print("✗ 模型没有decoder属性")
-        return False
+        print("  可用属性:", [attr for attr in dir(model) if not attr.startswith('_')][:10])
+        
+        # 尝试其他可能的架构
+        if hasattr(model, 'model'):
+            print("  发现model属性，尝试检查model.decoder...")
+            if hasattr(model.model, 'decoder'):
+                print("  ✓ 找到model.decoder，使用model.decoder")
+                model.decoder = model.model.decoder
+            else:
+                return False
+        else:
+            return False
     
+    # 检查decoder.block
     if not hasattr(model.decoder, 'block'):
         print("✗ decoder没有block属性")
-        return False
+        print("  decoder可用属性:", [attr for attr in dir(model.decoder) if not attr.startswith('_')][:15])
+        
+        # 尝试其他可能的属性名
+        for attr_name in ['layers', 'blocks', 'transformer_blocks']:
+            if hasattr(model.decoder, attr_name):
+                print(f"  发现{attr_name}属性，尝试使用...")
+                model.decoder.block = getattr(model.decoder, attr_name)
+                break
+        else:
+            return False
     
     # 检查MoE层
     moe_layers = []
-    for layer_idx, layer in enumerate(model.decoder.block):
+    decoder_blocks = model.decoder.block
+    
+    print(f"  decoder.block类型: {type(decoder_blocks).__name__}")
+    print(f"  decoder.block长度: {len(decoder_blocks)}")
+    
+    for layer_idx, layer in enumerate(decoder_blocks):
+        # 检查多种可能的层结构
+        ffn_layer = None
+        
+        # 方式1: layer.layer[1] (Switch Transformer标准结构)
         if hasattr(layer, 'layer') and len(layer.layer) > 1:
             ffn_layer = layer.layer[1]
+        # 方式2: layer.feed_forward
+        elif hasattr(layer, 'feed_forward'):
+            ffn_layer = layer.feed_forward
+        # 方式3: layer.mlp
+        elif hasattr(layer, 'mlp'):
+            ffn_layer = layer.mlp
+        # 方式4: 直接检查layer是否有router
+        elif hasattr(layer, 'router'):
+            moe_layers.append((layer_idx, layer.router))
+            continue
+        
+        if ffn_layer is not None:
+            # 检查ffn_layer中的router
             if hasattr(ffn_layer, 'mlp') and hasattr(ffn_layer.mlp, 'router'):
                 moe_layers.append((layer_idx, ffn_layer.mlp.router))
+            elif hasattr(ffn_layer, 'router'):
+                moe_layers.append((layer_idx, ffn_layer.router))
+            elif hasattr(ffn_layer, 'expert_router'):
+                moe_layers.append((layer_idx, ffn_layer.expert_router))
     
     if len(moe_layers) == 0:
         print("✗ 未找到MoE层")
+        print("  调试信息:")
+        if len(decoder_blocks) > 0:
+            first_layer = decoder_blocks[0]
+            print(f"  第一层类型: {type(first_layer).__name__}")
+            print(f"  第一层属性: {[attr for attr in dir(first_layer) if not attr.startswith('_')][:15]}")
+            if hasattr(first_layer, 'layer') and len(first_layer.layer) > 0:
+                print(f"  layer[0]类型: {type(first_layer.layer[0]).__name__}")
+                if len(first_layer.layer) > 1:
+                    print(f"  layer[1]类型: {type(first_layer.layer[1]).__name__}")
+                    print(f"  layer[1]属性: {[attr for attr in dir(first_layer.layer[1]) if not attr.startswith('_')][:15]}")
         return False
     
     print(f"✓ 找到 {len(moe_layers)} 个MoE层")
