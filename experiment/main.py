@@ -220,7 +220,7 @@ def main():
     parser.add_argument("--gamma_design", type=float, default=0.03, help="设计的攻击强度 γ")
     parser.add_argument("--C_system", type=float, default=1.5, help="系统常数 C (来自标定)")
     parser.add_argument("--c_star", type=float, default=2.0, help="安全系数 c* (来自标定)")
-    parser.add_argument("--tau_alpha", type=float, default=20.0, help="LLR 检测阈值 τ")
+    parser.add_argument("--tau_alpha", type=float, default=5.0, help="LLR 检测阈值 τ (默认5.0，应通过H0假设下的实验标定，见THRESHOLD_EXPLANATION.md)")
     
     args = parser.parse_args()
     

@@ -140,7 +140,14 @@ class LLRDetector:
             llr_per_expert = torch.log(p1_S) - torch.log(p0_S)
             
             # 对 k_top 个专家求和, 然后对 batch 和 seq 求和
-            total_llr += torch.sum(llr_per_expert).item()
+            layer_llr = torch.sum(llr_per_expert).item()
+            total_llr += layer_llr
+            
+            # 调试信息（仅第一次）
+            if not hasattr(self, '_llr_debug_printed'):
+                print(f"  第1层 LLR贡献: {layer_llr:.4f} (batch={batch_size}, seq={seq_len}, k_top={k_top})")
+                print(f"  平均每个位置的LLR: {layer_llr / (batch_size * seq_len):.4f}")
+                self._llr_debug_printed = True
             
             # 计算Chernoff信息 (论文定理3.2)
             # 对每个位置计算平均Chernoff信息
@@ -362,6 +369,14 @@ class LLRDetector:
         # 计算 LLR 和 Chernoff信息
         llr_score, avg_chernoff = self.compute_llr_from_data(watermark_data)
         print(f"  计算得到的 LLR 分数: {llr_score:.4f}, 阈值: {self.tau_alpha:.4f}")
+        print(f"  平均 Chernoff 信息: {avg_chernoff:.4f}")
+        
+        # 如果LLR分数较低，给出建议
+        if llr_score > 0 and llr_score < self.tau_alpha:
+            print(f"  提示: LLR分数 ({llr_score:.4f}) 低于阈值 ({self.tau_alpha:.4f})")
+            print(f"  建议: 1) 使用 --mode calibrate 来标定阈值")
+            print(f"        2) 或降低阈值: --tau_alpha {max(5.0, llr_score * 1.5):.1f}")
+            print(f"        3) 确保检测的文本是嵌入时生成的完整文本")
         
         # 判决 (论文定理3.1)
         is_detected = llr_score > self.tau_alpha
