@@ -99,6 +99,12 @@ def set_environment_variables():
             env_script.append(f'set {env_var}={value}')
             print(f"  {env_var} = {value}")
     
+    # 添加Hugging Face镜像源
+    env_script.append("")
+    env_script.append("REM Hugging Face镜像源（加速下载）")
+    env_script.append('set HF_ENDPOINT=https://hf-mirror.com')
+    print(f"  HF_ENDPOINT = https://hf-mirror.com")
+    
     # 保存到批处理文件
     bat_file = Path("D:/Dev/set_cache_env.bat")
     with open(bat_file, "w", encoding="utf-8") as f:
@@ -116,6 +122,11 @@ def set_environment_variables():
         for env_var in cache_info["env_vars"]:
             value = str(cache_info["new"]).replace("\\", "/")
             ps_script.append(f'$env:{env_var} = "{value}"')
+    
+    # 添加Hugging Face镜像源
+    ps_script.append("")
+    ps_script.append("# Hugging Face镜像源（加速下载）")
+    ps_script.append('$env:HF_ENDPOINT = "https://hf-mirror.com"')
     
     ps_file = Path("D:/Dev/set_cache_env.ps1")
     with open(ps_file, "w", encoding="utf-8") as f:
@@ -151,9 +162,13 @@ os.environ["TORCH_HOME"] = str(CACHE_BASE / "torch")
 # 设置pip缓存
 os.environ["PIP_CACHE_DIR"] = str(CACHE_BASE / "pip")
 
+# 设置Hugging Face镜像源（加速下载）
+os.environ["HF_ENDPOINT"] = "https://hf-mirror.com"
+
 print("✓ 缓存路径已设置到D盘")
 print(f"  HF_HOME: {os.environ['HF_HOME']}")
 print(f"  TORCH_HOME: {os.environ['TORCH_HOME']}")
+print(f"  HF_ENDPOINT: {os.environ['HF_ENDPOINT']}")
 '''
     
     # 获取脚本所在目录

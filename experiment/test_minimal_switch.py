@@ -12,6 +12,8 @@ os.environ.setdefault("HF_HOME", str(CACHE_BASE / "huggingface"))
 os.environ.setdefault("TRANSFORMERS_CACHE", str(CACHE_BASE / "huggingface" / "hub"))
 os.environ.setdefault("HF_DATASETS_CACHE", str(CACHE_BASE / "huggingface" / "datasets"))
 os.environ.setdefault("TORCH_HOME", str(CACHE_BASE / "torch"))
+# 设置Hugging Face镜像源（加速下载）
+os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")
 
 import torch
 from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
