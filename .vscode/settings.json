@@ -1,0 +1,32 @@
+{
+  // Python 解释器配置
+  // 使用已创建的 conda 环境
+  "python.defaultInterpreterPath": "${env:LOCALAPPDATA}\\miniconda3\\envs\\emb_attack_separa\\python.exe",
+  
+  // 或者使用 conda 基础环境的 Python（备选）
+  // "python.defaultInterpreterPath": "${env:LOCALAPPDATA}\\miniconda3\\python.exe",
+  
+  // 自动激活 conda 环境（如果已安装 conda）
+  "python.terminal.activateEnvironment": true,
+  
+  // 终端配置 - 使用 PowerShell 并初始化 conda
+  "terminal.integrated.profiles.windows": {
+    "PowerShell with Conda": {
+      "path": "powershell.exe",
+      "args": [
+        "-NoExit",
+        "-Command",
+        "& '${env:LOCALAPPDATA}\\miniconda3\\Scripts\\conda.exe' 'shell.powershell' 'hook' | Out-String | Invoke-Expression"
+      ]
+    }
+  },
+  "terminal.integrated.defaultProfile.windows": "PowerShell",
+  
+  // Jupyter Notebook 配置
+  "jupyter.notebookFileRoot": "${workspaceFolder}/experiment",
+  
+  // Python 分析器配置
+  "python.analysis.autoImportCompletions": true,
+  "python.analysis.typeCheckingMode": "basic"
+}
+

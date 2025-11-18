@@ -9,6 +9,7 @@ from moe_watermark import patch_moe_model_with_watermark
 from calibration import calibrate_Lg, calibrate_C, calibrate_C_star
 from detector import LLRDetector
 from attacks import paraphrase_text_batch, estimate_gamma_from_text
+from experiments import run_all_experiments, ExperimentA, ExperimentC, ExperimentD, ExperimentE
 
 def load_model_and_tokenizer(model_name: str, device: str):
     print(f"Loading model and tokenizer: {model_name}...")
@@ -41,7 +42,8 @@ def get_dataloader(dataset_name: str, split: str, tokenizer: AutoTokenizer, batc
 
 def main():
     parser = argparse.ArgumentParser(description="MoE Provably Robust Watermark Project")
-    parser.add_argument("--mode", type=str, required=True, choices=["calibrate", "embed", "detect"], help="操作模式")
+    parser.add_argument("--mode", type=str, required=True, 
+                       choices=["calibrate", "embed", "detect", "experiment"], help="操作模式")
     parser.add_argument("--model_name", type=str, default="mistralai/Mixtral-8x7B-v0.1", help="要使用的 MoE 模型")
     parser.add_argument("--dataset_name", type=str, default="wikitext", help="用于标定的数据集")
     parser.add_argument("--dataset_split", type=str, default="train", help="数据集分片")
@@ -165,6 +167,42 @@ def main():
         else:
             print(f"Result: Watermark NOT DETECTED (Score: {llr_score:.2f})")
         print("------------------------")
+    
+    elif args.mode == "experiment":
+        # --- 实验模式: 运行论文中的实验A-E ---
+        from datasets import load_dataset
+        from torch.utils.data import DataLoader, Subset
+        
+        model, tokenizer = load_model_and_tokenizer(args.model_name, device)
+        
+        # 准备数据集
+        print(f"Loading dataset: {args.dataset_name}...")
+        dataset = load_dataset(args.dataset_name, name="wikitext-103-v1", split=args.dataset_split)
+        
+        # Tokenize
+        def tokenize_function(examples):
+            return tokenizer(examples["text"], truncation=True, max_length=512, padding="max_length")
+        
+        tokenized_dataset = dataset.map(tokenize_function, batched=True, remove_columns=["text"])
+        tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
+        
+        # 创建子集
+        subset_dataset = Subset(tokenized_dataset, range(min(args.num_calib_samples, len(tokenized_dataset))))
+        dataloader = DataLoader(subset_dataset, batch_size=args.batch_size)
+        
+        print(f"Running experiments with {len(subset_dataset)} samples...")
+        
+        # 运行所有实验
+        all_results = run_all_experiments(
+            args.model_name,
+            dataloader,
+            tokenizer,
+            device,
+            output_dir="./experiment_results"
+        )
+        
+        print("\n所有实验完成!")
+        print("结果已保存到 ./experiment_results/")
 
 if __name__ == "__main__":
     main()

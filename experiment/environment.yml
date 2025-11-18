@@ -1,0 +1,20 @@
+name: emb_attack_separa
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pytorch
+  - numpy
+  - scipy
+  - scikit-learn
+  - pip:
+    - torch
+    - transformers
+    - tqdm
+    - datasets
+    - sentencepiece
+    - accelerate
+

@@ -28,12 +28,38 @@ MoE 可证鲁棒水印方案 (Provably Robust MoE Watermark)
 安装
 --
 
+### 方法1：使用 Conda 环境（推荐）
+
+1. 安装 Miniconda（如果尚未安装）
+   - 详见 `INSTALL.md` 中的安装指南
+   - 或运行：`winget install Anaconda.Miniconda3`
+
+2. 创建并激活 conda 环境：
+   ```bash
+   cd experiment
+   conda env create -f environment.yml
+   conda activate emb_attack_separa
+   ```
+
+### 方法2：使用 pip 虚拟环境
+
 1. 克隆本项目
 
-2. 安装依赖:
-      pip install -r requirements.txt
+2. 创建虚拟环境：
+   ```bash
+   python -m venv venv
+   # Windows
+   venv\Scripts\activate
+   # Linux/Mac
+   source venv/bin/activate
+   ```
 
-3. （可选）根据您的 `torch` 版本和 CUDA 配置，确保 `torch` 已正确安装。
+3. 安装依赖:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+4. （可选）根据您的 `torch` 版本和 CUDA 配置，确保 `torch` 已正确安装。
 
 使用说明
 ----
