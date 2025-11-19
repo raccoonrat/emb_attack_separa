@@ -52,6 +52,7 @@ def detect_and_setup_cache():
 detect_and_setup_cache()
 
 import argparse
+import logging
 import torch
 import gc
 import sys
@@ -62,10 +63,19 @@ from datasets import load_dataset
 from torch.utils.data import DataLoader, Subset
 import json
 
+# 导入工具模块
+from utils.logger import setup_logging, get_logger
+from utils.exceptions import WatermarkError, CalibrationError, DetectionError, ModelPatchError, ConfigurationError
+from utils.performance import clear_cache, timing
+
+# 初始化日志系统
+setup_logging(level=logging.INFO)
+logger = get_logger(__name__)
+
 def cleanup_resources(verbose=False):
     """清理所有资源，确保程序能快速退出"""
     if verbose:
-        print("开始清理资源...")
+        logger.info("开始清理资源...")
     
     # 1. 清理 CUDA 缓存和上下文
     # 注意：使用全局的 torch 模块，不要在这里导入
@@ -81,7 +91,7 @@ def cleanup_resources(verbose=False):
                 pass
     except Exception as e:
         if verbose:
-            print(f"CUDA清理警告: {e}")
+            logger.warning(f"CUDA清理警告: {e}")
     
     # 2. 关闭transformers的文件句柄和缓存
     try:
@@ -98,15 +108,15 @@ def cleanup_resources(verbose=False):
     for _ in range(5):  # 增加到5次
         collected = gc.collect()
         if verbose and collected > 0:
-            print(f"  垃圾回收: 释放了 {collected} 个对象")
+            logger.debug(f"  垃圾回收: 释放了 {collected} 个对象")
     
     # 4. 检查并处理后台线程
     if verbose:
         threads_before = [t for t in threading.enumerate() if t != threading.main_thread() and t.is_alive()]
         if threads_before:
-            print(f"检测到 {len(threads_before)} 个后台线程:")
+            logger.debug(f"检测到 {len(threads_before)} 个后台线程:")
             for t in threads_before:
-                print(f"  - {t.name} (daemon={t.daemon}, alive={t.is_alive()})")
+                logger.debug(f"  - {t.name} (daemon={t.daemon}, alive={t.is_alive()})")
     
     # 5. 处理非守护线程：尝试将它们标记为守护线程
     non_daemon_threads = []
@@ -114,15 +124,15 @@ def cleanup_resources(verbose=False):
         if thread != threading.main_thread() and thread.is_alive():
             if not thread.daemon:
                 non_daemon_threads.append(thread)
-                # 尝试将线程标记为守护线程（允许在后台运行）
+                    # 尝试将线程标记为守护线程（允许在后台运行）
                 try:
                     thread.daemon = True
                     if verbose:
-                        print(f"  将线程 '{thread.name}' 标记为守护线程")
+                        logger.debug(f"  将线程 '{thread.name}' 标记为守护线程")
                 except (RuntimeError, AttributeError):
                     # 某些线程在启动后无法修改daemon属性（如Thread-auto_conversion）
                     if verbose:
-                        print(f"  警告: 无法将线程 '{thread.name}' 标记为守护线程（将在退出时强制终止）")
+                        logger.warning(f"  警告: 无法将线程 '{thread.name}' 标记为守护线程（将在退出时强制终止）")
     
     # 6. 等待非守护线程完成（最多等待0.2秒）
     for thread in non_daemon_threads:
@@ -137,12 +147,12 @@ def cleanup_resources(verbose=False):
             daemon_count = sum(1 for t in threads_after if t.daemon)
             non_daemon_count = sum(1 for t in threads_after if not t.daemon)
             if non_daemon_count > 0:
-                print(f"仍有 {non_daemon_count} 个非守护线程未退出（将强制终止）:")
+                logger.warning(f"仍有 {non_daemon_count} 个非守护线程未退出（将强制终止）:")
                 for t in threads_after:
                     if not t.daemon:
-                        print(f"  - {t.name} (daemon={t.daemon})")
+                        logger.warning(f"  - {t.name} (daemon={t.daemon})")
             if daemon_count > 0:
-                print(f"  ({daemon_count} 个守护线程仍在运行，不会阻止退出)")
+                logger.debug(f"  ({daemon_count} 个守护线程仍在运行，不会阻止退出)")
 
 # 注册退出时的清理函数
 atexit.register(cleanup_resources)
@@ -318,7 +328,7 @@ def load_model_and_tokenizer(model_name: str, device: str):
     - 使用FP16而非bfloat16（更好的兼容性）
     - 限制显存使用
     """
-    print(f"Loading model and tokenizer: {model_name}...")
+    logger.info(f"Loading model and tokenizer: {model_name}...")
     
     # 统一使用switch-base-8（Seq2Seq模型）
     from transformers import AutoModelForSeq2SeqLM
@@ -334,13 +344,14 @@ def load_model_and_tokenizer(model_name: str, device: str):
         max_memory={0: "5GB"} if torch.cuda.is_available() else None
     )
     
-    print("Model and tokenizer loaded.")
-    print(f"显存使用: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB" if torch.cuda.is_available() else "")
+    logger.info("Model and tokenizer loaded.")
+    if torch.cuda.is_available():
+        logger.info(f"显存使用: {torch.cuda.memory_allocated(0) / 1024**3:.2f} GB")
     
     return model, tokenizer
 
 def get_dataloader(dataset_name: str, split: str, tokenizer: AutoTokenizer, batch_size: int, num_samples: int):
-    print(f"Loading dataset: {dataset_name} (split: {split})...")
+    logger.info(f"Loading dataset: {dataset_name} (split: {split})...")
     dataset = load_dataset(dataset_name, name="wikitext-103-v1", split=split) # 示例
     
     # Tokenize
@@ -354,7 +365,7 @@ def get_dataloader(dataset_name: str, split: str, tokenizer: AutoTokenizer, batc
     subset_dataset = Subset(tokenized_dataset, range(min(num_samples, len(tokenized_dataset))))
     
     dataloader = DataLoader(subset_dataset, batch_size=batch_size)
-    print(f"Dataset loaded with {len(subset_dataset)} samples.")
+    logger.info(f"Dataset loaded with {len(subset_dataset)} samples.")
     return dataloader
 
 def main():
@@ -385,295 +396,300 @@ def main():
     
     if args.mode == "calibrate":
         # --- 标定模式 ---
-        model, tokenizer = load_model_and_tokenizer(args.model_name, device)
-        dataloader = get_dataloader(
-            args.dataset_name, 
-            args.dataset_split, 
-            tokenizer, 
-            args.batch_size, 
-            args.num_calib_samples
-        )
-        
-        # (注意：Lg 标定在实际中很复杂，这里的实现是一个占位符)
-        # Lg = calibrate_Lg(model, dataloader, device)
-        Lg = 2.0 # 暂时使用默认值
-        print(f"Using default Lg = {Lg}")
+        try:
+            model, tokenizer = load_model_and_tokenizer(args.model_name, device)
+            dataloader = get_dataloader(
+                args.dataset_name, 
+                args.dataset_split, 
+                tokenizer, 
+                args.batch_size, 
+                args.num_calib_samples
+            )
+            
+            # (注意：Lg 标定在实际中很复杂，这里的实现是一个占位符)
+            # Lg = calibrate_Lg(model, dataloader, device)
+            Lg = 2.0 # 暂时使用默认值
+            logger.info(f"Using default Lg = {Lg}")
 
-        # (注意：C 标定需要 patch 模型，并且依赖 Lg)
-        # 为 C 标定 patch 一个临时的 key
-        from mves_config import get_default_config
-        config_temp = get_default_config()
-        config_temp.watermark.secret_key = "calib_C_key"
-        config_temp.watermark.epsilon = 0.01
-        config_temp.model.model_name = args.model_name
-        
-        patched_model_for_C = patch_switch_model_with_watermark(model, config_temp)
-        
-        # (注意：calibrate_C 依赖一个可用的 paraphrase 模型，可能很慢)
-        # C_prop, C_stability, C = calibrate_C(patched_model_for_C, dataloader, tokenizer, device, Lg)
-        C_prop, C_stability, C = 1.0, 1.5, 1.5 # 暂时使用默认值
-        print(f"Using default C_prop={C_prop}, C_stability={C_stability}, C={C}")
+            # (注意：C 标定需要 patch 模型，并且依赖 Lg)
+            # 为 C 标定 patch 一个临时的 key
+            from mves_config import get_default_config
+            config_temp = get_default_config()
+            config_temp.watermark.secret_key = "calib_C_key"
+            config_temp.watermark.epsilon = 0.01
+            config_temp.model.model_name = args.model_name
+            
+            patched_model_for_C = patch_switch_model_with_watermark(model, config_temp)
+            
+            # (注意：calibrate_C 依赖一个可用的 paraphrase 模型，可能很慢)
+            # C_prop, C_stability, C = calibrate_C(patched_model_for_C, dataloader, tokenizer, device, Lg)
+            C_prop, C_stability, C = 1.0, 1.5, 1.5 # 暂时使用默认值
+            logger.info(f"Using default C_prop={C_prop}, C_stability={C_stability}, C={C}")
 
-        # (注意：c* 标定需要多次 PPL 测量)
-        # c_star = calibrate_C_star(model, dataloader, C, args.gamma_design)
-        c_star = 2.0 # 暂时使用默认值
-        print(f"Using default c*={c_star}")
-        
-        print("\n--- Calibration Results (Defaults) ---")
-        print(f"Lg (95th percentile): {Lg:.4f}")
-        print(f"System Constant C:    {C:.4f}")
-        print(f"Optimal Factor c*:    {c_star:.4f}")
-        print("--------------------------------------")
-        print("请将这些值用于 embed 和 detect 模式")
+            # (注意：c* 标定需要多次 PPL 测量)
+            # c_star = calibrate_C_star(model, dataloader, C, args.gamma_design)
+            c_star = 2.0 # 暂时使用默认值
+            logger.info(f"Using default c*={c_star}")
+            
+            logger.info("\n--- Calibration Results (Defaults) ---")
+            logger.info(f"Lg (95th percentile): {Lg:.4f}")
+            logger.info(f"System Constant C:    {C:.4f}")
+            logger.info(f"Optimal Factor c*:    {c_star:.4f}")
+            logger.info("--------------------------------------")
+            logger.info("请将这些值用于 embed 和 detect 模式")
+        except Exception as e:
+            logger.error(f"标定过程失败: {e}", exc_info=True)
+            raise CalibrationError(f"标定失败: {e}") from e
 
     elif args.mode == "embed":
         # --- 嵌入模式 ---
-        model, tokenizer = load_model_and_tokenizer(args.model_name, device)
-        
-        # 计算水印强度 ε
-        epsilon = args.c_star**2 * args.gamma_design
-        print(f"Using c*={args.c_star}, γ={args.gamma_design} -> ε={epsilon:.4f}")
-        
-        # Patch 模型（统一使用switch-base-8）
-        from mves_config import get_default_config
-        config = get_default_config()
-        config.watermark.secret_key = args.secret_key
-        config.watermark.epsilon = epsilon
-        config.model.model_name = args.model_name
-        
-        patched_model = patch_switch_model_with_watermark(model, config)
-        
-        print(f"\nGenerating watermarked text from prompt: '{args.prompt}'...")
-        inputs = tokenizer(args.prompt, return_tensors="pt").to(device)
-        
-        # 添加 LogitsProcessor 来清理无效值
-        from transformers import LogitsProcessor
-        
-        class CleanInvalidLogitsProcessor(LogitsProcessor):
-            """清理生成过程中的无效 logits 值"""
-            def __call__(self, input_ids: torch.Tensor, scores: torch.Tensor) -> torch.Tensor:
-                # 检查并修复无效值
-                scores = torch.where(torch.isnan(scores), torch.zeros_like(scores), scores)
-                scores = torch.where(torch.isinf(scores), torch.zeros_like(scores), scores)
-                # 限制 logits 范围，避免极端值
-                scores = torch.clamp(scores, min=-100.0, max=100.0)
-                return scores
-        
-        logits_processor = CleanInvalidLogitsProcessor()
-        
-        with torch.no_grad():
-            outputs = patched_model.generate(
-                **inputs, 
-                max_new_tokens=100, 
-                do_sample=True, # 激活采样
-                top_k=50,
-                top_p=0.95,  # 添加nucleus sampling以提高质量
-                temperature=0.7,  # 降低temperature以提高文本质量
-                repetition_penalty=1.1,  # 减少重复
-                logits_processor=[logits_processor]  # 添加 logits processor
-            )
-            
-        watermarked_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
-        print("\n--- Watermarked Output ---")
-        print(watermarked_text)
-        print("--------------------------")
-        
-        # 计算PPL（困惑度）来评估文本质量
-        print("\n计算文本质量指标 (PPL)...")
         try:
-            # 1. 计算原始模型的PPL（基线）
-            print("  计算原始模型PPL...")
-            original_model, _ = load_model_and_tokenizer(args.model_name, device)
-            original_model.eval()
-            original_ppl = calculate_text_ppl(original_model, tokenizer, watermarked_text, device)
+            model, tokenizer = load_model_and_tokenizer(args.model_name, device)
             
-            # 2. 计算水印模型的PPL
-            print("  计算水印模型PPL...")
-            watermarked_ppl = calculate_text_ppl(patched_model, tokenizer, watermarked_text, device)
+            # 计算水印强度 ε
+            epsilon = args.c_star**2 * args.gamma_design
+            logger.info(f"Using c*={args.c_star}, γ={args.gamma_design} -> ε={epsilon:.4f}")
+        
+            # Patch 模型（统一使用switch-base-8）
+            from mves_config import get_default_config
+            config = get_default_config()
+            config.watermark.secret_key = args.secret_key
+            config.watermark.epsilon = epsilon
+            config.model.model_name = args.model_name
             
-            # 3. 计算PPL增加率
-            ppl_increase = ((watermarked_ppl - original_ppl) / original_ppl) * 100 if original_ppl > 0 else 0
+            patched_model = patch_switch_model_with_watermark(model, config)
             
-            print(f"\n--- Text Quality Metrics ---")
-            print(f"Original Model PPL:  {original_ppl:.2f}")
-            print(f"Watermarked PPL:     {watermarked_ppl:.2f}")
-            print(f"PPL Increase:        {ppl_increase:.2f}%")
-            print("---------------------------")
+            logger.info(f"\nGenerating watermarked text from prompt: '{args.prompt}'...")
+            inputs = tokenizer(args.prompt, return_tensors="pt").to(device)
             
-            # 清理原始模型
-            del original_model
-            torch.cuda.empty_cache() if torch.cuda.is_available() else None
+            # 添加 LogitsProcessor 来清理无效值
+            from transformers import LogitsProcessor
             
+            class CleanInvalidLogitsProcessor(LogitsProcessor):
+                """清理生成过程中的无效 logits 值"""
+                def __call__(self, input_ids: torch.Tensor, scores: torch.Tensor) -> torch.Tensor:
+                    # 检查并修复无效值
+                    scores = torch.where(torch.isnan(scores), torch.zeros_like(scores), scores)
+                    scores = torch.where(torch.isinf(scores), torch.zeros_like(scores), scores)
+                    # 限制 logits 范围，避免极端值
+                    scores = torch.clamp(scores, min=-100.0, max=100.0)
+                    return scores
+            
+            logits_processor = CleanInvalidLogitsProcessor()
+            
+            with torch.no_grad():
+                outputs = patched_model.generate(
+                    **inputs, 
+                    max_new_tokens=100, 
+                    do_sample=True, # 激活采样
+                    top_k=50,
+                    top_p=0.95,  # 添加nucleus sampling以提高质量
+                    temperature=0.7,  # 降低temperature以提高文本质量
+                    repetition_penalty=1.1,  # 减少重复
+                    logits_processor=[logits_processor]  # 添加 logits processor
+                )
+            
+            watermarked_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+            logger.info("\n--- Watermarked Output ---")
+            logger.info(watermarked_text)
+            logger.info("--------------------------")
+            
+            # 计算PPL（困惑度）来评估文本质量
+            logger.info("\n计算文本质量指标 (PPL)...")
+            try:
+                # 1. 计算原始模型的PPL（基线）
+                logger.info("  计算原始模型PPL...")
+                original_model, _ = load_model_and_tokenizer(args.model_name, device)
+                original_model.eval()
+                original_ppl = calculate_text_ppl(original_model, tokenizer, watermarked_text, device)
+                
+                # 2. 计算水印模型的PPL
+                logger.info("  计算水印模型PPL...")
+                watermarked_ppl = calculate_text_ppl(patched_model, tokenizer, watermarked_text, device)
+                
+                # 3. 计算PPL增加率
+                ppl_increase = ((watermarked_ppl - original_ppl) / original_ppl) * 100 if original_ppl > 0 else 0
+                
+                logger.info(f"\n--- Text Quality Metrics ---")
+                logger.info(f"Original Model PPL:  {original_ppl:.2f}")
+                logger.info(f"Watermarked PPL:     {watermarked_ppl:.2f}")
+                logger.info(f"PPL Increase:        {ppl_increase:.2f}%")
+                logger.info("---------------------------")
+                
+                # 清理原始模型
+                del original_model
+                torch.cuda.empty_cache() if torch.cuda.is_available() else None
+                
+            except Exception as e:
+                logger.warning(f"PPL计算失败: {e}", exc_info=True)
+                logger.info("继续执行...")
+            
+            # 清理资源，确保程序能快速退出
+            logger.info("\n清理资源...")
+            try:
+                del inputs, outputs
+            except:
+                pass
+            try:
+                del patched_model, model, tokenizer
+            except:
+                pass
+            
+            # 执行清理
+            cleanup_resources(verbose=True)
+            logger.info("✓ 资源清理完成")
+            
+            # 智能退出：检查是否有非守护线程阻止退出
+            blocking_threads = [t for t in threading.enumerate() 
+                               if t != threading.main_thread() and t.is_alive() and not t.daemon]
+            
+            if blocking_threads:
+                # 有非守护线程阻止退出，使用强制退出
+                logger.warning(f"\n检测到 {len(blocking_threads)} 个非守护线程（如 transformers 的自动转换线程）")
+                logger.info("使用强制退出以确保程序立即结束...")
+                os._exit(0)  # 强制退出，跳过所有清理和atexit钩子
+            else:
+                # 没有阻塞线程，正常退出
+                logger.info("\n准备退出...")
+                sys.exit(0)
         except Exception as e:
-            import traceback
-            print(f"警告: PPL计算失败: {e}")
-            print(f"错误详情: {traceback.format_exc()}")
-            print("继续执行...")
-        
-        # 清理资源，确保程序能快速退出
-        print("\n清理资源...")
-        try:
-            del inputs, outputs
-        except:
-            pass
-        try:
-            del patched_model, model, tokenizer
-        except:
-            pass
-        
-        # 执行清理
-        cleanup_resources(verbose=True)
-        print("✓ 资源清理完成")
-        
-        # 智能退出：检查是否有非守护线程阻止退出
-        import sys
-        import os
-        
-        blocking_threads = [t for t in threading.enumerate() 
-                           if t != threading.main_thread() and t.is_alive() and not t.daemon]
-        
-        if blocking_threads:
-            # 有非守护线程阻止退出，使用强制退出
-            print(f"\n检测到 {len(blocking_threads)} 个非守护线程（如 transformers 的自动转换线程）")
-            print("使用强制退出以确保程序立即结束...")
-            os._exit(0)  # 强制退出，跳过所有清理和atexit钩子
-        else:
-            # 没有阻塞线程，正常退出
-            print("\n准备退出...")
-            sys.exit(0)
+            logger.error(f"嵌入过程失败: {e}", exc_info=True)
+            raise WatermarkError(f"水印嵌入失败: {e}") from e
 
     elif args.mode == "detect":
         # --- 检测模式 ---
-        if not args.text_to_check:
-            raise ValueError("--text_to_check is required for detect mode")
-            
-        model, tokenizer = load_model_and_tokenizer(args.model_name, device)
-        
-        # 计算水印强度 ε
-        epsilon = args.c_star**2 * args.gamma_design
-        print(f"Loading detector with c*={args.c_star}, γ={args.gamma_design} -> ε={epsilon:.4f}")
-
-        # Patch 模型，以便 LLR 检测器可以访问 p0 和 p1
-        from mves_config import get_default_config
-        config = get_default_config()
-        config.watermark.secret_key = args.secret_key
-        config.watermark.epsilon = epsilon
-        config.model.model_name = args.model_name
-        
-        patched_model = patch_switch_model_with_watermark(model, config)
-        
-        detector = LLRDetector(patched_model, tokenizer, tau_alpha=args.tau_alpha)
-        
-        text_to_check = args.text_to_check
-        
-        # 施加攻击
-        if args.attack == "paraphrase":
-            print("Applying paraphrase attack before detection...")
-            original_text = text_to_check
-            text_to_check = paraphrase_text_batch([original_text])[0]
-            
-            gamma_est = estimate_gamma_from_text(original_text, text_to_check, tokenizer.vocab_size)
-            print(f"Paraphrased text: '{text_to_check}'")
-            print(f"Estimated attack strength γ: {gamma_est:.4f}")
-
-        print(f"\nDetecting watermark in text (length {len(text_to_check)})...")
-        is_detected, llr_score = detector.detect(text_to_check)
-        
-        print("\n--- Detection Result ---")
-        if is_detected:
-            print(f"Result: Watermark DETECTED (Score: {llr_score:.2f})")
-        else:
-            print(f"Result: Watermark NOT DETECTED (Score: {llr_score:.2f})")
-        print("------------------------")
-        
-        # 清理资源
-        print("\n清理资源...")
         try:
-            del detector, patched_model, model, tokenizer
-        except:
-            pass
-        
-        cleanup_resources(verbose=True)
-        print("✓ 资源清理完成")
-        
-        # 智能退出：检查是否有非守护线程阻止退出
-        import sys
-        import os
-        
-        blocking_threads = [t for t in threading.enumerate() 
-                           if t != threading.main_thread() and t.is_alive() and not t.daemon]
-        
-        if blocking_threads:
-            # 有非守护线程阻止退出，使用强制退出
-            print(f"\n检测到 {len(blocking_threads)} 个非守护线程（如 transformers 的自动转换线程）")
-            print("使用强制退出以确保程序立即结束...")
-            os._exit(0)  # 强制退出，跳过所有清理和atexit钩子
-        else:
-            # 没有阻塞线程，正常退出
-            print("\n准备退出...")
-            sys.exit(0)
+            if not args.text_to_check:
+                raise ValueError("--text_to_check is required for detect mode")
+                
+            model, tokenizer = load_model_and_tokenizer(args.model_name, device)
+            
+            # 计算水印强度 ε
+            epsilon = args.c_star**2 * args.gamma_design
+            logger.info(f"Loading detector with c*={args.c_star}, γ={args.gamma_design} -> ε={epsilon:.4f}")
+
+            # Patch 模型，以便 LLR 检测器可以访问 p0 和 p1
+            from mves_config import get_default_config
+            config = get_default_config()
+            config.watermark.secret_key = args.secret_key
+            config.watermark.epsilon = epsilon
+            config.model.model_name = args.model_name
+            
+            patched_model = patch_switch_model_with_watermark(model, config)
+            
+            detector = LLRDetector(patched_model, tokenizer, tau_alpha=args.tau_alpha)
+            
+            text_to_check = args.text_to_check
+            
+            # 施加攻击
+            if args.attack == "paraphrase":
+                logger.info("Applying paraphrase attack before detection...")
+                original_text = text_to_check
+                text_to_check = paraphrase_text_batch([original_text])[0]
+                
+                gamma_est = estimate_gamma_from_text(original_text, text_to_check, tokenizer.vocab_size)
+                logger.info(f"Paraphrased text: '{text_to_check}'")
+                logger.info(f"Estimated attack strength γ: {gamma_est:.4f}")
+
+            logger.info(f"\nDetecting watermark in text (length {len(text_to_check)})...")
+            is_detected, llr_score = detector.detect(text_to_check)
+            
+            logger.info("\n--- Detection Result ---")
+            if is_detected:
+                logger.info(f"Result: Watermark DETECTED (Score: {llr_score:.2f})")
+            else:
+                logger.info(f"Result: Watermark NOT DETECTED (Score: {llr_score:.2f})")
+            logger.info("------------------------")
+            
+            # 清理资源
+            logger.info("\n清理资源...")
+            try:
+                del detector, patched_model, model, tokenizer
+            except:
+                pass
+            
+            cleanup_resources(verbose=True)
+            logger.info("✓ 资源清理完成")
+            
+            # 智能退出：检查是否有非守护线程阻止退出
+            blocking_threads = [t for t in threading.enumerate() 
+                               if t != threading.main_thread() and t.is_alive() and not t.daemon]
+            
+            if blocking_threads:
+                # 有非守护线程阻止退出，使用强制退出
+                logger.warning(f"\n检测到 {len(blocking_threads)} 个非守护线程（如 transformers 的自动转换线程）")
+                logger.info("使用强制退出以确保程序立即结束...")
+                os._exit(0)  # 强制退出，跳过所有清理和atexit钩子
+            else:
+                # 没有阻塞线程，正常退出
+                logger.info("\n准备退出...")
+                sys.exit(0)
+        except Exception as e:
+            logger.error(f"检测过程失败: {e}", exc_info=True)
+            raise DetectionError(f"水印检测失败: {e}") from e
     
     elif args.mode == "experiment":
         # --- 实验模式: 运行论文中的实验A-E ---
-        from datasets import load_dataset
-        from torch.utils.data import DataLoader, Subset
-        
-        model, tokenizer = load_model_and_tokenizer(args.model_name, device)
-        
-        # 准备数据集
-        print(f"Loading dataset: {args.dataset_name}...")
-        dataset = load_dataset(args.dataset_name, name="wikitext-103-v1", split=args.dataset_split)
-        
-        # Tokenize
-        def tokenize_function(examples):
-            return tokenizer(examples["text"], truncation=True, max_length=512, padding="max_length")
-        
-        tokenized_dataset = dataset.map(tokenize_function, batched=True, remove_columns=["text"])
-        tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
-        
-        # 创建子集
-        subset_dataset = Subset(tokenized_dataset, range(min(args.num_calib_samples, len(tokenized_dataset))))
-        dataloader = DataLoader(subset_dataset, batch_size=args.batch_size)
-        
-        print(f"Running experiments with {len(subset_dataset)} samples...")
-        
-        # 运行所有实验
-        all_results = run_all_experiments(
-            args.model_name,
-            dataloader,
-            tokenizer,
-            device,
-            output_dir="./experiment_results"
-        )
-        
-        print("\n所有实验完成!")
-        print("结果已保存到 ./experiment_results/")
-        
-        # 清理资源
-        print("\n清理资源...")
         try:
-            del model, tokenizer, dataloader
-        except:
-            pass
-        cleanup_resources(verbose=True)
-        print("✓ 资源清理完成")
-        
-        # 智能退出：检查是否有非守护线程阻止退出
-        import sys
-        import os
-        
-        blocking_threads = [t for t in threading.enumerate() 
-                           if t != threading.main_thread() and t.is_alive() and not t.daemon]
-        
-        if blocking_threads:
-            # 有非守护线程阻止退出，使用强制退出
-            print(f"\n检测到 {len(blocking_threads)} 个非守护线程（如 transformers 的自动转换线程）")
-            print("使用强制退出以确保程序立即结束...")
-            os._exit(0)  # 强制退出，跳过所有清理和atexit钩子
-        else:
-            # 没有阻塞线程，正常退出
-            print("\n准备退出...")
-            sys.exit(0)
+            from datasets import load_dataset
+            from torch.utils.data import DataLoader, Subset
+            
+            model, tokenizer = load_model_and_tokenizer(args.model_name, device)
+            
+            # 准备数据集
+            logger.info(f"Loading dataset: {args.dataset_name}...")
+            dataset = load_dataset(args.dataset_name, name="wikitext-103-v1", split=args.dataset_split)
+            
+            # Tokenize
+            def tokenize_function(examples):
+                return tokenizer(examples["text"], truncation=True, max_length=512, padding="max_length")
+            
+            tokenized_dataset = dataset.map(tokenize_function, batched=True, remove_columns=["text"])
+            tokenized_dataset.set_format(type="torch", columns=["input_ids", "attention_mask"])
+            
+            # 创建子集
+            subset_dataset = Subset(tokenized_dataset, range(min(args.num_calib_samples, len(tokenized_dataset))))
+            dataloader = DataLoader(subset_dataset, batch_size=args.batch_size)
+            
+            logger.info(f"Running experiments with {len(subset_dataset)} samples...")
+            
+            # 运行所有实验
+            all_results = run_all_experiments(
+                args.model_name,
+                dataloader,
+                tokenizer,
+                device,
+                output_dir="./experiment_results"
+            )
+            
+            logger.info("\n所有实验完成!")
+            logger.info("结果已保存到 ./experiment_results/")
+            
+            # 清理资源
+            logger.info("\n清理资源...")
+            try:
+                del model, tokenizer, dataloader
+            except:
+                pass
+            cleanup_resources(verbose=True)
+            logger.info("✓ 资源清理完成")
+            
+            # 智能退出：检查是否有非守护线程阻止退出
+            blocking_threads = [t for t in threading.enumerate() 
+                               if t != threading.main_thread() and t.is_alive() and not t.daemon]
+            
+            if blocking_threads:
+                # 有非守护线程阻止退出，使用强制退出
+                logger.warning(f"\n检测到 {len(blocking_threads)} 个非守护线程（如 transformers 的自动转换线程）")
+                logger.info("使用强制退出以确保程序立即结束...")
+                os._exit(0)  # 强制退出，跳过所有清理和atexit钩子
+            else:
+                # 没有阻塞线程，正常退出
+                logger.info("\n准备退出...")
+                sys.exit(0)
+        except Exception as e:
+            logger.error(f"实验过程失败: {e}", exc_info=True)
+            raise WatermarkError(f"实验执行失败: {e}") from e
 
 if __name__ == "__main__":
     main()
