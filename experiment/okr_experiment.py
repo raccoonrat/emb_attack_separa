@@ -190,36 +190,92 @@ class OKRBasicExperiment(OKRExperimentFramework):
         # 4. 生成带水印的文本
         logger.info("开始生成带水印的文本...")
         watermarked_texts = []
+        watermarked_token_ids = []  # 保存生成的token序列，用于检测
         for text in tqdm(texts, desc="生成文本"):
+            # 清空之前的路由数据（每次生成前清空）
+            if hasattr(watermarked_model, '_okr_routing_data'):
+                watermarked_model._okr_routing_data = {}
+            # 清空所有router的累积数据
+            for name, module in watermarked_model.named_modules():
+                if hasattr(module, '_okr_all_selected_experts'):
+                    module._okr_all_selected_experts = []
+            
             inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, 
                             max_length=self.config.experiment.max_length).to(self.device)
+            
+            # 对于 encoder-decoder 模型，需要设置 decoder_start_token_id
+            decoder_start_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
             
             with torch.no_grad():
                 outputs = watermarked_model.generate(
                     **inputs,
                     max_length=self.config.experiment.max_length,
                     num_beams=1,
-                    do_sample=False
+                    do_sample=False,
+                    decoder_start_token_id=decoder_start_token_id,
+                    pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id
                 )
             
             generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
             watermarked_texts.append(generated_text)
+            # 保存生成的token序列（用于检测）
+            watermarked_token_ids.append(outputs[0])
+            
+            # 记录生成的文本（用于调试）
+            logger.debug(f"样本 {len(watermarked_texts)}: 原始='{text[:50]}...', 生成='{generated_text[:50]}...', token数={outputs[0].shape[0]}")
         
         # 5. 检测水印
         logger.info("开始检测水印...")
         detector = OKRDetector(watermarked_model, epsilon=self.config.watermark.epsilon)
         
         detection_results = []
-        for i, (original_text, watermarked_text) in enumerate(zip(texts, watermarked_texts)):
-            # 使用原始文本作为输入进行检测
-            # 对于 encoder-decoder 模型，input_ids 是 encoder 输入
-            inputs = tokenizer(original_text, return_tensors="pt", padding=True, truncation=True,
-                             max_length=self.config.experiment.max_length).to(self.device)
+        for i, (original_text, watermarked_text, generated_token_ids) in enumerate(zip(texts, watermarked_texts, watermarked_token_ids)):
+            # 重要：检测时应该使用生成时的路由数据
+            # 但我们需要重新运行模型来获取 hidden_states
+            # 使用原始文本作为 encoder 输入，使用生成的token序列作为 decoder 输入
+            encoder_inputs = tokenizer(original_text, return_tensors="pt", padding=True, truncation=True,
+                                      max_length=self.config.experiment.max_length).to(self.device)
+            
+            # 关键修复：使用generate()返回的原始token序列，而不是解码后的文本
+            # 对于encoder-decoder模型，generate()返回的outputs[0]只包含decoder的输出序列
+            # 路由数据是decoder生成时累积的，包含了所有生成的token（自回归生成时每次forward处理1个token）
+            # 所以outputs[0]的长度应该等于路由数据的长度（或接近）
+            decoder_start_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+            
+            # 使用generate()返回的原始token序列（不跳过special tokens，以保持完整）
+            # generated_token_ids是1D tensor [seq_len]，包含了decoder生成的完整序列
+            if len(generated_token_ids.shape) == 1:
+                generated_seq = generated_token_ids
+            else:
+                generated_seq = generated_token_ids[0]
+            
+            # 对于encoder-decoder模型，generate()返回的outputs[0]只包含decoder输出
+            # 但我们需要准备decoder输入：decoder_start_token_id + generated_seq[:-1]
+            # 这样decoder输入的长度 = 1 + (len(generated_seq) - 1) = len(generated_seq)
+            if generated_seq.shape[0] > 0:
+                decoder_input_ids = torch.cat([
+                    torch.tensor([[decoder_start_token_id]], device=self.device, dtype=torch.long),
+                    generated_seq[:-1].unsqueeze(0) if generated_seq.shape[0] > 1 else torch.tensor([[decoder_start_token_id]], device=self.device, dtype=torch.long)
+                ], dim=1)
+            else:
+                decoder_input_ids = torch.tensor([[decoder_start_token_id]], device=self.device, dtype=torch.long)
+            
+            # 记录长度信息（用于调试）
+            # 检查路由数据的长度
+            routing_data_len = None
+            for name, module in watermarked_model.named_modules():
+                if hasattr(module, '_okr_all_selected_experts') and module._okr_all_selected_experts:
+                    routing_data_len = len(module._okr_all_selected_experts)
+                    break
+            
+            logger.info(f"样本 {i}: generated_seq长度={generated_seq.shape[0]}, decoder_input_ids长度={decoder_input_ids.shape[1]}, 路由数据长度={routing_data_len}, watermarked_text长度={len(watermarked_text)}")
             
             # 检测器会自动处理 encoder-decoder 模型
+            # 传入 decoder_input_ids 以便使用生成时的token序列
             score, verdict = detector.detect(
-                input_ids=inputs["input_ids"],
-                attention_mask=inputs.get("attention_mask")
+                input_ids=encoder_inputs["input_ids"],
+                attention_mask=encoder_inputs.get("attention_mask"),
+                decoder_input_ids=decoder_input_ids  # 使用生成的完整文本重新tokenize后的序列
             )
             detection_results.append({
                 "sample_id": i,

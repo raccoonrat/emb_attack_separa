@@ -45,29 +45,29 @@
   "summary": {
     "total_samples": 3,
     "watermarked_samples": 0,
-    "average_hit_rate": 0.027777778605620067,
+    "average_hit_rate": 0.07951987286408742,
     "detection_threshold": 0.8
   },
   "detailed_results": [
     {
       "sample_id": 0,
       "original_text": "The quick brown fox jumps over the lazy dog.",
-      "watermarked_text": "",
-      "hit_rate": 0.0,
+      "watermarked_text": ". the lazy dog.. The lazy dog.",
+      "hit_rate": 0.0625,
       "verdict": "Clean"
     },
     {
       "sample_id": 1,
       "original_text": "In a world where technology advances rapidly, artificial intelligence plays a crucial role.",
-      "watermarked_text": "the.......???????..?.?.?..?..?..?..?..?..?.?.?.?.?.?..?..?..?..?..).)...).).).).).)).).).).)..).),).",
-      "hit_rate": 0.0833333358168602,
+      "watermarked_text": ". Artificial intelligence is the future of Artificial intelligence is the technology that is being u",
+      "hit_rate": 0.10526315867900848,
       "verdict": "Clean"
     },
     {
       "sample_id": 2,
       "original_text": "Climate change is one of the most pressing issues facing humanity today.",
-      "watermarked_text": "",
-      "hit_rate": 0.0,
+      "watermarked_text": ".. Climate change is a major concern for humanity today. the world today. Climate change is a global",
+      "hit_rate": 0.07079645991325378,
       "verdict": "Clean"
     }
   ]

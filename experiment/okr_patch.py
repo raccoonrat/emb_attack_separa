@@ -189,15 +189,23 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
             except:
                 router_dtype = torch.float32  # 默认
             
-            # 方式1: router.gate (Linear层) - SwitchTransformersTop1Router 的标准结构
-            if hasattr(router, 'gate') and isinstance(router.gate, torch.nn.Linear):
+            # 方式1: router.classifier (SwitchTransformersTop1Router 使用 classifier)
+            if hasattr(router, 'classifier') and isinstance(router.classifier, torch.nn.Linear):
+                gate_layer = router.classifier
+                input_dim = gate_layer.in_features
+                num_experts_found = gate_layer.out_features
+                router_dtype = gate_layer.weight.dtype
+                print(f"  使用 router.classifier: {input_dim} -> {num_experts_found}, dtype: {router_dtype}")
+            
+            # 方式2: router.gate (Linear层) - 某些变体可能使用 gate
+            elif hasattr(router, 'gate') and isinstance(router.gate, torch.nn.Linear):
                 gate_layer = router.gate
                 input_dim = gate_layer.in_features
                 num_experts_found = gate_layer.out_features
                 router_dtype = gate_layer.weight.dtype
                 print(f"  使用 router.gate: {input_dim} -> {num_experts_found}, dtype: {router_dtype}")
             
-            # 方式2: router 直接有 weight 参数
+            # 方式3: router 直接有 weight 参数
             elif hasattr(router, 'weight') and isinstance(router.weight, torch.nn.Parameter):
                 if len(router.weight.shape) >= 2:
                     input_dim = router.weight.shape[0]
@@ -207,7 +215,7 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
                 else:
                     print(f"警告: Layer {layer_idx} - router.weight 形状异常: {router.weight.shape}")
             
-            # 方式3: 检查 router 的其他属性（SwitchTransformersTop1Router 可能有 q_proj 等）
+            # 方式4: 检查 router 的其他属性（可能有 q_proj 等）
             elif hasattr(router, 'q_proj') and isinstance(router.q_proj, torch.nn.Linear):
                 gate_layer = router.q_proj
                 input_dim = gate_layer.in_features
@@ -258,12 +266,34 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
             try:
                 if gate_layer is not None:
                     with torch.no_grad():
-                        # 确保 dtype 匹配
-                        if gate_layer.weight.dtype != okr_router.gate_network.weight.dtype:
-                            okr_router.gate_network.weight.data = gate_layer.weight.data.to(dtype=okr_router.gate_network.weight.dtype)
+                        # 检查形状是否匹配
+                        gate_weight = gate_layer.weight
+                        okr_weight = okr_router.gate_network.weight
+                        
+                        if gate_weight.shape == okr_weight.shape:
+                            # 形状匹配，直接复制
+                            if gate_weight.dtype != okr_weight.dtype:
+                                okr_weight.data = gate_weight.data.to(dtype=okr_weight.dtype)
+                            else:
+                                okr_weight.copy_(gate_weight)
+                            print(f"  ✓ Layer {layer_idx}: 已复制权重: {gate_weight.shape}, dtype: {gate_weight.dtype}")
+                            import logging
+                            logging.getLogger("okr_patch").info(f"Layer {layer_idx}: 权重复制成功: {gate_weight.shape}")
+                        elif gate_weight.shape == okr_weight.shape[::-1]:
+                            # 形状转置，需要转置后复制
+                            weight_t = gate_weight.T
+                            if weight_t.dtype != okr_weight.dtype:
+                                okr_weight.data = weight_t.data.to(dtype=okr_weight.dtype)
+                            else:
+                                okr_weight.copy_(weight_t)
+                            print(f"  ✓ Layer {layer_idx}: 已复制并转置权重: {gate_weight.shape} -> {okr_weight.shape}")
+                            import logging
+                            logging.getLogger("okr_patch").info(f"Layer {layer_idx}: 权重转置复制成功: {gate_weight.shape} -> {okr_weight.shape}")
                         else:
-                            okr_router.gate_network.weight.copy_(gate_layer.weight)
-                        print(f"  已复制 gate_layer 权重: {gate_layer.weight.shape}, dtype: {gate_layer.weight.dtype}")
+                            print(f"  ✗ Layer {layer_idx}: 权重形状不匹配: {gate_weight.shape} vs {okr_weight.shape}")
+                            print(f"     使用随机初始化（水印可能无法正常工作）")
+                            import logging
+                            logging.getLogger("okr_patch").warning(f"Layer {layer_idx}: 权重形状不匹配，使用随机初始化")
                 elif hasattr(router, 'weight') and router.weight is not None:
                     with torch.no_grad():
                         # 检查形状是否匹配
@@ -300,18 +330,35 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
             router._okr_router = okr_router
             
             # 创建新的 forward 方法，只替换方法，不替换对象
-            def make_okr_forward(orig_fwd, okr_rt, mdl, nm):
+            def make_okr_forward(orig_fwd, okr_rt, mdl, nm, layer_id):
                 def okr_forward(hidden_states: torch.Tensor):
                     # 调用 OKR 核心逻辑
                     routing_weights, selected_experts = _okr_forward_core(okr_rt, hidden_states)
                     
                     # 保存路由信息到模型和 router
+                    # 重要：累积保存所有token的数据，而不是覆盖
+                    # 因为生成是自回归的，每次forward只处理一个token
                     if not hasattr(mdl, '_okr_routing_data'):
-                        mdl._okr_routing_data = []
-                    mdl._okr_routing_data.append(selected_experts)
+                        mdl._okr_routing_data = {}  # 使用字典，按层存储
                     
-                    # 也保存到 router 对象上
+                    # 按层存储路由数据（累积）
+                    if layer_id not in mdl._okr_routing_data:
+                        mdl._okr_routing_data[layer_id] = []
+                    
+                    # 累积保存：将当前token的数据追加到列表中
+                    # selected_experts: [batch, seq_len, top_k]
+                    # 如果是自回归生成，seq_len通常是1
+                    mdl._okr_routing_data[layer_id].append(selected_experts)
+                    
+                    # 也保存到 router 对象上（供检测器使用）
+                    # 对于检测，我们需要保存完整的累积数据
+                    if not hasattr(router, '_okr_all_selected_experts'):
+                        router._okr_all_selected_experts = []
+                    router._okr_all_selected_experts.append(selected_experts)
+                    
+                    # 保存最新的（用于兼容性）
                     router._selected_experts = selected_experts
+                    router._okr_routing_weights = routing_weights  # 保存权重供调试
                     
                     batch_size, seq_len, _ = hidden_states.shape
                     num_experts = okr_rt.gate_network.out_features
@@ -350,7 +397,7 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
                 return okr_forward
             
             # 只替换 forward 方法，保持原对象不变
-            router.forward = make_okr_forward(original_forward, okr_router, model, f"layer_{layer_idx}")
+            router.forward = make_okr_forward(original_forward, okr_router, model, f"layer_{layer_idx}", layer_idx)
             
             count += 1
     
