@@ -14,12 +14,13 @@ import os
 @dataclass
 class OKRModelConfig:
     """OKR 模型配置"""
-    model_name: str = "google/switch-base-8"  # 默认使用 Switch Transformers
-    model_type: str = "switch"  # switch, mixtral
+    model_name: str = "google/switch-base-8"  # 默认使用 Switch Transformers，可以是 HuggingFace ID 或本地路径
+    model_type: str = "switch"  # switch, mixtral, deepseek_moe
     device: str = "auto"  # auto, cuda, cpu
     torch_dtype: str = "float32"  # float32, bfloat16, float16
     trust_remote_code: bool = False
     max_memory: Optional[Dict[int, str]] = None  # GPU 内存限制，如 {0: "5GB"}
+    local_model_path: Optional[str] = None  # 本地模型路径（如果提供，优先使用本地路径）
 
 
 @dataclass
@@ -90,10 +91,19 @@ class OKRConfig:
         os.makedirs(self.experiment.output_dir, exist_ok=True)
         
         # 自动设置模型相关参数
-        if "switch" in self.model.model_name.lower():
+        model_name_lower = self.model.model_name.lower()
+        if "switch" in model_name_lower:
             self.model.model_type = "switch"
             self.watermark.num_experts = 8
             self.watermark.top_k = 1
+        elif "deepseek" in model_name_lower and "moe" in model_name_lower:
+            self.model.model_type = "deepseek_moe"
+            # DeepSeek-MoE-16B: 64 个专家，top-8 激活
+            # 如果配置中没有设置，使用默认值
+            if self.watermark.num_experts == 8:  # 默认值，需要更新
+                self.watermark.num_experts = 64
+            if self.watermark.top_k == 1:  # 默认值，需要更新
+                self.watermark.top_k = 8
         
         # 验证配置
         self.watermark.validate()
@@ -162,5 +172,61 @@ def get_robustness_test_okr_config() -> OKRConfig:
     config.experiment.experiment_name = "OKR_Robustness"
     config.attack.attack_type = "paraphrase"
     config.experiment.num_samples = 200
+    return config
+
+
+def get_deepseek_moe_config(local_path: Optional[str] = None) -> OKRConfig:
+    """
+    获取 DeepSeek-MoE 配置
+    
+    针对 A800 GPU 优化：
+    - 使用 bfloat16 精度（A800 原生支持）
+    - 设置合理的 GPU 内存限制
+    - 适配 DeepSeek-MoE 的专家数量（通常为 64 个专家，top-8 激活）
+    
+    Args:
+        local_path: 本地模型路径（如果提供，优先使用本地路径）
+    """
+    config = OKRConfig()
+    
+    # 模型配置
+    if local_path:
+        # 使用本地路径
+        config.model.local_model_path = local_path
+        config.model.model_name = local_path  # 也设置 model_name 以便兼容
+        print(f"使用本地模型路径: {local_path}")
+    else:
+        # 使用 HuggingFace 模型 ID
+        config.model.model_name = "deepseek-ai/DeepSeek-MoE-16B"  # 或 "deepseek-ai/DeepSeek-MoE-16B-base"
+    
+    config.model.model_type = "deepseek_moe"
+    config.model.device = "cuda"
+    config.model.torch_dtype = "bfloat16"  # A800 原生支持 bfloat16，性能更好
+    config.model.trust_remote_code = True  # DeepSeek 可能需要 trust_remote_code
+    
+    # A800 80GB 显存配置：保守使用，留出余量
+    config.model.max_memory = {0: "70GB"}  # 留出 10GB 余量
+    
+    # 水印配置（DeepSeek-MoE 通常有更多专家）
+    # DeepSeek-MoE-16B: 64 个专家，top-8 激活
+    config.watermark.num_experts = 64
+    config.watermark.top_k = 8
+    config.watermark.epsilon = 2.0  # 稍微提高 epsilon，因为专家更多
+    
+    # 实验配置
+    config.experiment.experiment_name = "OKR_DeepSeek_MoE"
+    config.experiment.batch_size = 1  # DeepSeek-MoE 较大，batch_size 设为 1
+    config.experiment.max_length = 512
+    
+    return config
+
+
+def get_deepseek_moe_quick_test_config(local_path: Optional[str] = None) -> OKRConfig:
+    """获取 DeepSeek-MoE 快速测试配置（小样本，用于快速验证）"""
+    config = get_deepseek_moe_config(local_path=local_path)
+    config.experiment.num_samples = 5
+    config.experiment.batch_size = 1
+    config.experiment.max_length = 128
+    config.experiment.experiment_name = "OKR_DeepSeek_MoE_QuickTest"
     return config
 

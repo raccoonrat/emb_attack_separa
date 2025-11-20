@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional, Any
 from tqdm import tqdm
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+from transformers import AutoModelForSeq2SeqLM, AutoModelForCausalLM, AutoTokenizer
 from torch.utils.data import DataLoader, Dataset
 from collections import defaultdict
 
@@ -62,21 +62,30 @@ class OKRExperimentFramework:
         return device
     
     def load_tokenizer(self) -> AutoTokenizer:
-        """加载分词器"""
+        """加载分词器（支持本地路径）"""
         if self.tokenizer is None:
-            logger.info(f"加载分词器: {self.config.model.model_name}")
+            # 确定模型路径：优先使用本地路径
+            model_path = self.config.model.local_model_path or self.config.model.model_name
+            
+            logger.info(f"加载分词器: {model_path}")
             self.tokenizer = AutoTokenizer.from_pretrained(
-                self.config.model.model_name,
+                model_path,
                 trust_remote_code=self.config.model.trust_remote_code
             )
             if self.tokenizer.pad_token is None:
                 self.tokenizer.pad_token = self.tokenizer.eos_token
         return self.tokenizer
     
-    def load_model(self) -> AutoModelForSeq2SeqLM:
-        """加载模型"""
+    def load_model(self):
+        """加载模型（支持 encoder-decoder 和 decoder-only，支持本地路径）"""
         if self.model is None:
-            logger.info(f"加载模型: {self.config.model.model_name}")
+            # 确定模型路径：优先使用本地路径
+            model_path = self.config.model.local_model_path or self.config.model.model_name
+            
+            if self.config.model.local_model_path:
+                logger.info(f"从本地路径加载模型: {model_path}")
+            else:
+                logger.info(f"从 HuggingFace 加载模型: {model_path}")
             
             # 确定数据类型
             dtype_map = {
@@ -86,21 +95,56 @@ class OKRExperimentFramework:
             }
             torch_dtype = dtype_map.get(self.config.model.torch_dtype, torch.float32)
             
-            # 加载模型
-            self.model = AutoModelForSeq2SeqLM.from_pretrained(
-                self.config.model.model_name,
-                torch_dtype=torch_dtype,
-                device_map="auto" if torch.cuda.is_available() else None,
-                low_cpu_mem_usage=True,
-                max_memory=self.config.model.max_memory,
-                trust_remote_code=self.config.model.trust_remote_code
+            # 根据模型类型选择加载方式
+            model_name_lower = model_path.lower()
+            is_decoder_only = (
+                "deepseek" in model_name_lower or 
+                "moe" in model_name_lower or
+                self.config.model.model_type == "deepseek_moe"
             )
+            
+            # 尝试加载模型
+            try:
+                if is_decoder_only:
+                    # DeepSeek-MoE 是 decoder-only 模型
+                    logger.info("检测到 decoder-only 模型，使用 AutoModelForCausalLM")
+                    self.model = AutoModelForCausalLM.from_pretrained(
+                        model_path,
+                        torch_dtype=torch_dtype,
+                        device_map="auto" if torch.cuda.is_available() else None,
+                        low_cpu_mem_usage=True,
+                        max_memory=self.config.model.max_memory,
+                        trust_remote_code=self.config.model.trust_remote_code
+                    )
+                else:
+                    # Switch Transformers 是 encoder-decoder 模型
+                    logger.info("检测到 encoder-decoder 模型，使用 AutoModelForSeq2SeqLM")
+                    self.model = AutoModelForSeq2SeqLM.from_pretrained(
+                        model_path,
+                        torch_dtype=torch_dtype,
+                        device_map="auto" if torch.cuda.is_available() else None,
+                        low_cpu_mem_usage=True,
+                        max_memory=self.config.model.max_memory,
+                        trust_remote_code=self.config.model.trust_remote_code
+                    )
+            except Exception as e:
+                logger.warning(f"使用 AutoModelForSeq2SeqLM 加载失败: {e}")
+                logger.info("尝试使用 AutoModelForCausalLM...")
+                self.model = AutoModelForCausalLM.from_pretrained(
+                    model_path,
+                    torch_dtype=torch_dtype,
+                    device_map="auto" if torch.cuda.is_available() else None,
+                    low_cpu_mem_usage=True,
+                    max_memory=self.config.model.max_memory,
+                    trust_remote_code=self.config.model.trust_remote_code
+                )
+            
             self.model.eval()
             logger.info("模型加载完成")
         
         return self.model
     
-    def inject_watermark(self, model: Optional[AutoModelForSeq2SeqLM] = None) -> AutoModelForSeq2SeqLM:
+    def inject_watermark(self, model=None):
         """
         注入 OKR 水印
         
@@ -210,18 +254,30 @@ class OKRBasicExperiment(OKRExperimentFramework):
             inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, 
                             max_length=self.config.experiment.max_length).to(self.device)
             
-            # 对于 encoder-decoder 模型，需要设置 decoder_start_token_id
-            decoder_start_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+            # 判断模型类型：decoder-only 还是 encoder-decoder
+            is_decoder_only = not hasattr(watermarked_model, 'encoder') or watermarked_model.encoder is None
             
             with torch.no_grad():
-                outputs = watermarked_model.generate(
-                    **inputs,
-                    max_length=self.config.experiment.max_length,
-                    num_beams=1,
-                    do_sample=False,
-                    decoder_start_token_id=decoder_start_token_id,
-                    pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id
-                )
+                if is_decoder_only:
+                    # decoder-only 模型（如 DeepSeek-MoE）
+                    outputs = watermarked_model.generate(
+                        **inputs,
+                        max_length=self.config.experiment.max_length,
+                        num_beams=1,
+                        do_sample=False,
+                        pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id
+                    )
+                else:
+                    # encoder-decoder 模型（如 Switch Transformers）
+                    decoder_start_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+                    outputs = watermarked_model.generate(
+                        **inputs,
+                        max_length=self.config.experiment.max_length,
+                        num_beams=1,
+                        do_sample=False,
+                        decoder_start_token_id=decoder_start_token_id,
+                        pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id
+                    )
             
             generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
             watermarked_texts.append(generated_text)

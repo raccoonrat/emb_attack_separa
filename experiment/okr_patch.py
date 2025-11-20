@@ -33,14 +33,32 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
     model_type = model.config.model_type if hasattr(model.config, 'model_type') else ""
     
     # 获取模型配置
+    # DeepSeek-MoE 使用 num_experts 和 num_experts_per_tok
+    # Switch Transformers 使用 num_local_experts
     if hasattr(model.config, 'num_local_experts'):
         num_experts = model.config.num_local_experts
         top_k = getattr(model.config, 'num_experts_per_tok', 2)
     elif hasattr(model.config, 'num_experts'):
         num_experts = model.config.num_experts
-        top_k = getattr(model.config, 'num_experts_per_tok', 1)
+        top_k = getattr(model.config, 'num_experts_per_tok', 8)  # DeepSeek-MoE 默认 top-8
+    elif hasattr(model.config, 'num_experts_per_tok'):
+        # 如果只有 num_experts_per_tok，尝试从其他配置推断
+        top_k = model.config.num_experts_per_tok
+        # 尝试从模型结构推断 num_experts
+        num_experts = None
     else:
-        raise ValueError("无法检测模型配置：找不到num_experts或num_local_experts")
+        # 如果都找不到，尝试从模型结构推断
+        num_experts = None
+        top_k = None
+    
+    # 如果无法从配置获取，尝试从模型结构推断
+    if num_experts is None or top_k is None:
+        print("警告: 无法从配置获取专家数量，将尝试从模型结构推断")
+        # 如果仍然无法获取，使用默认值（会在后续从router层获取）
+        if num_experts is None:
+            num_experts = 8  # 临时默认值，后续会从router层更新
+        if top_k is None:
+            top_k = 1  # 临时默认值，后续会从router层更新
     
     # 获取输入维度（从gate层推断）
     input_dim = None
@@ -70,14 +88,28 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
         encoder = model.model.encoder
         print(f"找到 encoder (model.encoder): {type(encoder).__name__}")
     
-    # 对于 decoder-only 模型，decoder 可能不存在
+    # 对于 decoder-only 模型（如 DeepSeek-MoE），decoder 可能不存在
+    # 在这种情况下，模型本身可能就是 decoder
     if decoder is None:
-        # 尝试查找 encoder（某些模型可能只有 encoder）
-        if encoder is not None:
-            decoder = encoder
-            print(f"警告: 未找到 decoder，使用 encoder: {type(decoder).__name__}")
+        # DeepSeek-MoE 是 decoder-only 模型，使用 model.model 或 model 本身
+        if hasattr(model, 'model'):
+            decoder = model.model
+            print(f"找到 decoder-only 模型: {type(decoder).__name__}")
+        elif hasattr(model, 'transformer'):
+            decoder = model.transformer
+            print(f"找到 transformer: {type(decoder).__name__}")
+        elif hasattr(model, 'gpt_neox'):  # 某些架构使用 gpt_neox
+            decoder = model.gpt_neox
+            print(f"找到 gpt_neox: {type(decoder).__name__}")
         else:
-            raise ValueError("无法找到 decoder 或 encoder，模型可能不是 encoder-decoder 架构")
+            # 尝试查找 encoder（某些模型可能只有 encoder）
+            if encoder is not None:
+                decoder = encoder
+                print(f"警告: 未找到 decoder，使用 encoder: {type(decoder).__name__}")
+            else:
+                # 最后尝试：模型本身可能就是 decoder
+                print(f"警告: 未找到 decoder/encoder，尝试使用模型本身")
+                decoder = model
     
     # 获取 decoder blocks
     decoder_blocks = None
@@ -181,6 +213,40 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
             elif hasattr(moe, 'gate'):
                 router = moe.gate
                 print(f"Layer {layer_idx}: 找到 router (方式5: block_sparse_moe.gate)")
+        
+        # 方式6: DeepSeek-MoE 特定结构 - layer.mlp (MoE层)
+        if router is None and hasattr(layer, 'mlp'):
+            mlp_layer = layer.mlp
+            # DeepSeek-MoE 可能将 MoE 放在 mlp 中
+            if hasattr(mlp_layer, 'experts') and hasattr(mlp_layer, 'gate'):
+                router = mlp_layer.gate
+                print(f"Layer {layer_idx}: 找到 router (方式6: mlp.gate)")
+            elif hasattr(mlp_layer, 'router'):
+                router = mlp_layer.router
+                print(f"Layer {layer_idx}: 找到 router (方式6: mlp.router)")
+            elif hasattr(mlp_layer, 'gate_proj'):  # 某些变体使用 gate_proj
+                router = mlp_layer.gate_proj
+                print(f"Layer {layer_idx}: 找到 router (方式6: mlp.gate_proj)")
+        
+        # 方式7: DeepSeek-MoE 可能使用 layer.moe 或 layer.experts
+        if router is None and hasattr(layer, 'moe'):
+            moe_layer = layer.moe
+            if hasattr(moe_layer, 'gate'):
+                router = moe_layer.gate
+                print(f"Layer {layer_idx}: 找到 router (方式7: moe.gate)")
+            elif hasattr(moe_layer, 'router'):
+                router = moe_layer.router
+                print(f"Layer {layer_idx}: 找到 router (方式7: moe.router)")
+        
+        # 方式8: 检查 layer 是否有 experts 属性（DeepSeek-MoE 特征）
+        if router is None and hasattr(layer, 'experts'):
+            # 如果有 experts，通常会有对应的 gate
+            if hasattr(layer, 'gate'):
+                router = layer.gate
+                print(f"Layer {layer_idx}: 找到 router (方式8: layer.gate)")
+            elif hasattr(layer, 'router'):
+                router = layer.router
+                print(f"Layer {layer_idx}: 找到 router (方式8: layer.router)")
         
         # 如果找到了 router，处理它
         if router is not None:
