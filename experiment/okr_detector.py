@@ -95,6 +95,28 @@ class OKRDetector:
             import logging
             logging.getLogger("okr_detector").info(f"检测时获取到路由数据: {actual_selected_experts.shape}")
             
+            # 关键修复：检测时重新运行模型会触发router的forward，可能会再次累积路由数据
+            # 我们需要先保存当前的路由数据，然后临时清空，重新运行模型获取hidden_states，最后恢复路由数据
+            # 这样确保检测时使用的是生成时保存的路由数据，而不是检测时重新运行模型时产生的路由数据
+            saved_routing_data = {}
+            router_for_detection = self._get_router()
+            if router_for_detection:
+                if hasattr(router_for_detection, '_okr_all_selected_experts'):
+                    saved_routing_data['_okr_all_selected_experts'] = router_for_detection._okr_all_selected_experts.copy() if router_for_detection._okr_all_selected_experts else []
+                if hasattr(router_for_detection, '_selected_experts'):
+                    saved_routing_data['_selected_experts'] = router_for_detection._selected_experts
+                if hasattr(router_for_detection, '_okr_routing_weights'):
+                    saved_routing_data['_okr_routing_weights'] = router_for_detection._okr_routing_weights
+            
+            # 临时清空路由数据，避免重新运行模型时再次累积
+            if router_for_detection:
+                if hasattr(router_for_detection, '_okr_all_selected_experts'):
+                    router_for_detection._okr_all_selected_experts = []
+                if hasattr(router_for_detection, '_selected_experts'):
+                    router_for_detection._selected_experts = None
+                if hasattr(router_for_detection, '_okr_routing_weights'):
+                    router_for_detection._okr_routing_weights = None
+            
             # 重要：确保 decoder_input_ids 的长度与路由数据的长度匹配
             # 路由数据是生成时累积的，包含了所有生成的token（自回归生成时每次forward处理1个token）
             routing_seq_len = actual_selected_experts.shape[1]
@@ -106,23 +128,24 @@ class OKRDetector:
                 import logging
                 logging.getLogger("okr_detector").warning(f"decoder_input_ids长度({decoder_input_ids.shape[1]})小于路由数据长度({routing_seq_len})")
                 logging.getLogger("okr_detector").info(f"将截断路由数据以匹配decoder_input_ids长度（可能丢失信息）")
-                # 截断路由数据以匹配 decoder_input_ids 的长度
-                # 注意：路由数据是累积的，包含了所有生成的token（自回归生成时每次forward处理1个token）
-                # 对于encoder-decoder模型，router只在decoder层中，所以路由数据应该只包含decoder的token
-                # 但我们仍然需要确保长度匹配
+                # 对齐修正：采用"右对齐"（取最后 N 个 Token）
+                # 因为 Decoder 是自回归生成的，路由数据是累积的，最后的部分对应最新的decoder输出
                 decoder_seq_len = decoder_input_ids.shape[1]
                 routing_seq_len = actual_selected_experts.shape[1]
                 
-                # 如果路由数据长度远大于decoder输入长度，说明可能包含了encoder的token或其他层的累积
-                # 我们使用路由数据的最后decoder_seq_len个token（对应decoder输出）
-                if routing_seq_len > decoder_seq_len * 2:
+                # 始终使用右对齐：取最后 decoder_seq_len 个 token
+                # 这确保了路由数据与 decoder 输入的对齐（自回归生成时，最后的部分对应最新的token）
+                if routing_seq_len > decoder_seq_len:
                     import logging
-                    logging.getLogger("okr_detector").warning(f"路由数据长度({routing_seq_len})远大于decoder输入长度({decoder_seq_len})，可能包含了encoder的token")
-                    # 使用最后decoder_seq_len个token
+                    logging.getLogger("okr_detector").info(f"路由数据长度({routing_seq_len})大于decoder输入长度({decoder_seq_len})，使用右对齐：取最后{decoder_seq_len}个token")
+                    # 右对齐：取最后 decoder_seq_len 个 token
                     actual_selected_experts = actual_selected_experts[:, -decoder_seq_len:, :]
-                else:
-                    # 如果长度接近，直接截断到decoder_seq_len
-                    actual_selected_experts = actual_selected_experts[:, :decoder_seq_len, :]
+                elif routing_seq_len < decoder_seq_len:
+                    import logging
+                    logging.getLogger("okr_detector").warning(f"路由数据长度({routing_seq_len})小于decoder输入长度({decoder_seq_len})，可能数据不完整")
+                    # 如果路由数据不足，只能使用现有的数据
+                    # 同时需要截断 decoder_input_ids
+                    decoder_input_ids = decoder_input_ids[:, :routing_seq_len]
             elif decoder_input_ids.shape[1] > routing_seq_len:
                 import logging
                 logging.getLogger("okr_detector").warning(f"decoder_input_ids长度({decoder_input_ids.shape[1]})大于路由数据长度({routing_seq_len})，将截断decoder_input_ids")
@@ -131,6 +154,8 @@ class OKRDetector:
             
             # 重新运行模型获取 decoder 的 hidden states（用于计算水印信号和机会窗口）
             # 重要：使用生成的文本序列作为 decoder_input_ids，确保 hidden_states 与路由数据对应
+            # 注意：路由数据已经在actual_selected_experts中保存了，重新运行模型只是为了获取hidden_states
+            # 路由数据已经在上面临时清空了，避免重新运行模型时再次累积
             with torch.no_grad():
                 outputs = self.model(
                     input_ids=input_ids,
@@ -138,6 +163,15 @@ class OKRDetector:
                     decoder_input_ids=decoder_input_ids,
                     output_hidden_states=True
                 )
+            
+            # 恢复之前保存的路由数据（使用生成时保存的数据，而不是检测时重新运行模型时产生的数据）
+            if router_for_detection:
+                if hasattr(router_for_detection, '_okr_all_selected_experts'):
+                    router_for_detection._okr_all_selected_experts = saved_routing_data.get('_okr_all_selected_experts', [])
+                if hasattr(router_for_detection, '_selected_experts'):
+                    router_for_detection._selected_experts = saved_routing_data.get('_selected_experts')
+                if hasattr(router_for_detection, '_okr_routing_weights'):
+                    router_for_detection._okr_routing_weights = saved_routing_data.get('_okr_routing_weights')
             
             # 获取 decoder 的最后一层 hidden states
             if hasattr(outputs, 'decoder_hidden_states') and outputs.decoder_hidden_states:
@@ -338,16 +372,20 @@ class OKRDetector:
                 logging.getLogger("okr_detector").info(f"从 router._okr_all_selected_experts 获取: {len(all_experts)} tokens, 拼接后形状: {concatenated.shape}")
                 return concatenated
         
-        # 如果没有找到，尝试从所有router中找第一个
+        # 如果没有找到，尝试从所有router中找第一个（避免多层重复）
+        # 关键修复：只使用第一个router的路由数据，避免多层重复保存导致的数据膨胀
+        router_found = False
         for name, module in self.model.named_modules():
             if hasattr(module, '_okr_all_selected_experts'):
                 all_experts = module._okr_all_selected_experts
                 if all_experts and len(all_experts) > 0:
-                    # 拼接所有token的数据
-                    concatenated = torch.cat(all_experts, dim=1)
-                    import logging
-                    logging.getLogger("okr_detector").info(f"从 router._okr_all_selected_experts 获取 (fallback): {len(all_experts)} tokens, 拼接后形状: {concatenated.shape}")
-                    return concatenated
+                    # 只使用第一个router的路由数据（避免多层重复）
+                    if not router_found:
+                        concatenated = torch.cat(all_experts, dim=1)
+                        import logging
+                        logging.getLogger("okr_detector").info(f"从 router._okr_all_selected_experts 获取 (fallback): {len(all_experts)} tokens, 拼接后形状: {concatenated.shape}, router={name}")
+                        router_found = True
+                        return concatenated
         
         # 尝试从模型的属性中获取（按层存储的字典）
         if hasattr(self.model, '_okr_routing_data'):

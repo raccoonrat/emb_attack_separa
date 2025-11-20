@@ -50,7 +50,11 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
     print(f"模型类型: {model_type}")
     print(f"模型类: {type(model).__name__}")
     
+    # 精准区分 Encoder/Decoder
+    # 只处理 Decoder 的 Router，避免记录 Encoder 的路由数据
     decoder = None
+    encoder = None
+    
     if hasattr(model, 'decoder'):
         decoder = model.decoder
         print(f"找到 decoder: {type(decoder).__name__}")
@@ -58,18 +62,22 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
         decoder = model.model.decoder
         print(f"找到 decoder (model.decoder): {type(decoder).__name__}")
     
-    if decoder is None:
-        print("警告: 无法找到 decoder，尝试查找 encoder")
-        # Switch Transformers 可能只有 encoder 或 decoder
-        if hasattr(model, 'encoder'):
-            decoder = model.encoder
-            print(f"使用 encoder 作为 decoder: {type(decoder).__name__}")
-        elif hasattr(model, 'model') and hasattr(model.model, 'encoder'):
-            decoder = model.model.encoder
-            print(f"使用 encoder 作为 decoder (model.encoder): {type(decoder).__name__}")
+    # 也获取 encoder（用于区分，但不注入）
+    if hasattr(model, 'encoder'):
+        encoder = model.encoder
+        print(f"找到 encoder: {type(encoder).__name__}")
+    elif hasattr(model, 'model') and hasattr(model.model, 'encoder'):
+        encoder = model.model.encoder
+        print(f"找到 encoder (model.encoder): {type(encoder).__name__}")
     
+    # 对于 decoder-only 模型，decoder 可能不存在
     if decoder is None:
-        raise ValueError("无法找到 decoder 或 encoder，模型可能不是 encoder-decoder 架构")
+        # 尝试查找 encoder（某些模型可能只有 encoder）
+        if encoder is not None:
+            decoder = encoder
+            print(f"警告: 未找到 decoder，使用 encoder: {type(decoder).__name__}")
+        else:
+            raise ValueError("无法找到 decoder 或 encoder，模型可能不是 encoder-decoder 架构")
     
     # 获取 decoder blocks
     decoder_blocks = None
@@ -90,8 +98,12 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
         print(f"decoder 的属性: {[attr for attr in dir(decoder) if not attr.startswith('_')]}")
         raise ValueError("无法找到 decoder blocks")
     
-    # 遍历所有层，查找MoE router
-    print(f"开始查找 router，共有 {len(decoder_blocks)} 层")
+    # 遍历所有层，查找MoE router（只处理 Decoder 的 Router）
+    print(f"开始查找 decoder router，共有 {len(decoder_blocks)} 层")
+    
+    # 标记：当前处理的是 decoder（不是 encoder）
+    is_decoder_router = True
+    
     for layer_idx, layer in enumerate(decoder_blocks):
         router = None
         
@@ -330,31 +342,72 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
             router._okr_router = okr_router
             
             # 创建新的 forward 方法，只替换方法，不替换对象
-            def make_okr_forward(orig_fwd, okr_rt, mdl, nm, layer_id):
+            # 精准区分 Encoder/Decoder：传入 is_decoder 参数
+            # 关键修复：只让第一个router保存路由数据，避免多层重复
+            is_first_router = (count == 0)  # 第一个router才保存路由数据
+            def make_okr_forward(orig_fwd, okr_rt, mdl, nm, layer_id, is_decoder=True, is_first=False):
                 def okr_forward(hidden_states: torch.Tensor):
                     # 调用 OKR 核心逻辑
                     routing_weights, selected_experts = _okr_forward_core(okr_rt, hidden_states)
                     
-                    # 保存路由信息到模型和 router
-                    # 重要：累积保存所有token的数据，而不是覆盖
-                    # 因为生成是自回归的，每次forward只处理一个token
-                    if not hasattr(mdl, '_okr_routing_data'):
-                        mdl._okr_routing_data = {}  # 使用字典，按层存储
+                    # 精准区分 Encoder/Decoder：只记录 Decoder 的路由数据
+                    # 如果这不是 decoder router，直接返回，不保存路由数据
+                    if not is_decoder:
+                        # 这是 encoder router，不保存路由数据
+                        import logging
+                        logging.getLogger("okr_patch").debug(f"Layer {layer_id}: 跳过 encoder router 的路由数据保存")
+                        # 仍然需要返回正确的格式
+                        batch_size, seq_len, _ = hidden_states.shape
+                        num_experts = okr_rt.gate_network.out_features
+                        router_mask = torch.zeros((batch_size, seq_len, num_experts), device=hidden_states.device, dtype=hidden_states.dtype)
+                        router_mask.scatter_(dim=-1, index=selected_experts, src=routing_weights)
+                        router_probs = routing_weights.sum(dim=-1, keepdim=True)
+                        router_logits = torch.full((batch_size, seq_len, num_experts), float('-inf'), device=hidden_states.device, dtype=hidden_states.dtype)
+                        logits_values = torch.log(routing_weights + 1e-9)
+                        router_logits.scatter_(dim=-1, index=selected_experts, src=logits_values)
+                        return (router_mask, router_probs, router_logits)
                     
-                    # 按层存储路由数据（累积）
-                    if layer_id not in mdl._okr_routing_data:
-                        mdl._okr_routing_data[layer_id] = []
+                    # 关键修复：只让第一个router保存路由数据，避免多层重复
+                    # 其他router不保存，减少内存占用和避免数据混乱
+                    batch_size, seq_len, _ = hidden_states.shape
                     
-                    # 累积保存：将当前token的数据追加到列表中
-                    # selected_experts: [batch, seq_len, top_k]
-                    # 如果是自回归生成，seq_len通常是1
-                    mdl._okr_routing_data[layer_id].append(selected_experts)
-                    
-                    # 也保存到 router 对象上（供检测器使用）
-                    # 对于检测，我们需要保存完整的累积数据
-                    if not hasattr(router, '_okr_all_selected_experts'):
-                        router._okr_all_selected_experts = []
-                    router._okr_all_selected_experts.append(selected_experts)
+                    # 只有第一个router才保存路由数据
+                    if is_first:
+                        if not hasattr(mdl, '_okr_routing_data'):
+                            mdl._okr_routing_data = {}  # 使用字典，按层存储
+                        
+                        # 按层存储路由数据（累积）
+                        if layer_id not in mdl._okr_routing_data:
+                            mdl._okr_routing_data[layer_id] = []
+                        
+                        # 累积保存：将当前token的数据追加到列表中
+                        mdl._okr_routing_data[layer_id].append(selected_experts)
+                        
+                        # 也保存到 router 对象上（供检测器使用）
+                        # 关键修复：区分生成时和检测时
+                        # - 生成时：自回归生成，每次forward处理1个token（seq_len=1），应该累积保存
+                        # - 检测时：重新运行模型，hidden_states的seq_len就是decoder_input_ids的长度（可能>1），
+                        #   这是正常的，应该保存所有token的路由数据，但需要覆盖之前的数据（而不是累积）
+                        if not hasattr(router, '_okr_all_selected_experts'):
+                            router._okr_all_selected_experts = []
+                        
+                        # 判断是生成时还是检测时：
+                        # - 生成时：seq_len=1（自回归生成，每次forward处理1个token），应该累积保存
+                        # - 检测时：seq_len>1（重新运行模型，一次性处理所有token），应该覆盖保存
+                        if seq_len == 1:
+                            # 生成时：累积保存（自回归生成，每次forward处理1个token）
+                            router._okr_all_selected_experts.append(selected_experts)
+                        else:
+                            # 检测时：覆盖保存（重新运行模型，一次性处理所有token）
+                            import logging
+                            logging.getLogger("okr_patch").debug(f"Layer {layer_id}: hidden_states seq_len={seq_len} > 1，检测时重新运行模型，保存所有token的路由数据")
+                            # 检测时：将每个token的数据分别append（虽然是一次性处理，但为了与生成时的格式一致）
+                            for i in range(seq_len):
+                                router._okr_all_selected_experts.append(selected_experts[:, i:i+1, :])
+                    else:
+                        # 其他router不保存路由数据，只记录日志（用于调试）
+                        import logging
+                        logging.getLogger("okr_patch").debug(f"Layer {layer_id}: 非第一个router，跳过路由数据保存")
                     
                     # 保存最新的（用于兼容性）
                     router._selected_experts = selected_experts
@@ -397,7 +450,9 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
                 return okr_forward
             
             # 只替换 forward 方法，保持原对象不变
-            router.forward = make_okr_forward(original_forward, okr_router, model, f"layer_{layer_idx}", layer_idx)
+            # 传入 is_decoder=True，因为这是 decoder 的 router
+            # 传入 is_first=is_first_router，只有第一个router才保存路由数据
+            router.forward = make_okr_forward(original_forward, okr_router, model, f"layer_{layer_idx}", layer_idx, is_decoder=True, is_first=is_first_router)
             
             count += 1
     
@@ -418,7 +473,40 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
                             error_msg += f"第一层 layer[1].mlp 的属性: {[attr for attr in dir(layer_list[1].mlp) if not attr.startswith('_')]}\n"
         raise ValueError(error_msg)
     
-    print(f"Injected OKR into {count} layers.")
+    print(f"Injected OKR into {count} decoder layers.")
+    
+    # 强制数据清空：注入 clear_okr_stats() 方法
+    def clear_okr_stats(mdl):
+        """清空所有 OKR 路由统计数据"""
+        import logging
+        logger = logging.getLogger("okr_patch")
+        
+        # 清空模型级别的路由数据
+        if hasattr(mdl, '_okr_routing_data'):
+            mdl._okr_routing_data = {}
+            logger.debug("已清空模型级别的路由数据")
+        
+        # 清空所有router的累积数据（包括所有层）
+        cleared_count = 0
+        for name, module in mdl.named_modules():
+            if hasattr(module, '_okr_all_selected_experts'):
+                old_len = len(module._okr_all_selected_experts) if module._okr_all_selected_experts else 0
+                module._okr_all_selected_experts = []
+                if old_len > 0:
+                    cleared_count += 1
+                    logger.debug(f"已清空 {name} 的路由数据（{old_len} tokens）")
+            if hasattr(module, '_selected_experts'):
+                module._selected_experts = None
+            if hasattr(module, '_okr_routing_weights'):
+                module._okr_routing_weights = None
+        
+        logger.info(f"clear_okr_stats() 完成：清空了 {cleared_count} 个router的数据")
+    
+    # 将 clear_okr_stats 方法绑定到模型
+    import types
+    model.clear_okr_stats = types.MethodType(clear_okr_stats, model)
+    
+    print(f"已注入 clear_okr_stats() 方法，可在生成前调用以清空路由数据")
     return model
 
 

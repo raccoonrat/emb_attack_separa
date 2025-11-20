@@ -191,14 +191,21 @@ class OKRBasicExperiment(OKRExperimentFramework):
         logger.info("开始生成带水印的文本...")
         watermarked_texts = []
         watermarked_token_ids = []  # 保存生成的token序列，用于检测
+        sample_routing_data = []  # 保存每个样本的路由数据
+        
         for text in tqdm(texts, desc="生成文本"):
-            # 清空之前的路由数据（每次生成前清空）
-            if hasattr(watermarked_model, '_okr_routing_data'):
-                watermarked_model._okr_routing_data = {}
-            # 清空所有router的累积数据
-            for name, module in watermarked_model.named_modules():
-                if hasattr(module, '_okr_all_selected_experts'):
-                    module._okr_all_selected_experts = []
+            # 强制数据清空：使用注入的 clear_okr_stats() 方法
+            if hasattr(watermarked_model, 'clear_okr_stats'):
+                watermarked_model.clear_okr_stats()
+                logger.debug(f"样本 {len(watermarked_texts) + 1}: 已调用 clear_okr_stats() 清空路由数据")
+            else:
+                # 兼容旧代码：手动清空
+                if hasattr(watermarked_model, '_okr_routing_data'):
+                    watermarked_model._okr_routing_data = {}
+                # 清空所有router的累积数据
+                for name, module in watermarked_model.named_modules():
+                    if hasattr(module, '_okr_all_selected_experts'):
+                        module._okr_all_selected_experts = []
             
             inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, 
                             max_length=self.config.experiment.max_length).to(self.device)
@@ -221,16 +228,40 @@ class OKRBasicExperiment(OKRExperimentFramework):
             # 保存生成的token序列（用于检测）
             watermarked_token_ids.append(outputs[0])
             
-            # 记录生成的文本（用于调试）
-            logger.debug(f"样本 {len(watermarked_texts)}: 原始='{text[:50]}...', 生成='{generated_text[:50]}...', token数={outputs[0].shape[0]}")
+            # 关键修复：立即提取并保存当前样本的路由数据，避免累积
+            # 问题：每个decoder层都有自己的router，每个router都在保存路由数据
+            # 解决方案：只使用第一个router的路由数据（避免重复）
+            current_sample_routing_data = None
+            router_found = False
+            for name, module in watermarked_model.named_modules():
+                if hasattr(module, '_okr_all_selected_experts') and module._okr_all_selected_experts:
+                    # 只使用第一个router的路由数据（避免多层重复）
+                    if not router_found:
+                        all_experts = module._okr_all_selected_experts
+                        if all_experts and len(all_experts) > 0:
+                            current_sample_routing_data = torch.cat(all_experts, dim=1)  # [batch, seq_len, top_k]
+                            router_found = True
+                            logger.debug(f"样本 {len(watermarked_texts) + 1}: 从 {name} 提取路由数据")
+                            break
+            
+            # 保存当前样本的路由数据
+            if current_sample_routing_data is not None:
+                sample_routing_data.append(current_sample_routing_data.clone())  # 深拷贝，避免后续被修改
+                routing_data_len = current_sample_routing_data.shape[1]
+            else:
+                sample_routing_data.append(None)
+                routing_data_len = 0
+                logger.warning(f"样本 {len(watermarked_texts)}: 未找到路由数据")
+            
+            logger.info(f"样本 {len(watermarked_texts)}: 原始='{text[:50]}...', 生成='{generated_text[:50]}...', generated_token数={outputs[0].shape[0]}, 路由数据token数={routing_data_len}")
         
         # 5. 检测水印
         logger.info("开始检测水印...")
         detector = OKRDetector(watermarked_model, epsilon=self.config.watermark.epsilon)
         
         detection_results = []
-        for i, (original_text, watermarked_text, generated_token_ids) in enumerate(zip(texts, watermarked_texts, watermarked_token_ids)):
-            # 重要：检测时应该使用生成时的路由数据
+        for i, (original_text, watermarked_text, generated_token_ids, sample_routing) in enumerate(zip(texts, watermarked_texts, watermarked_token_ids, sample_routing_data)):
+            # 重要：检测时应该使用生成时保存的路由数据（每个样本独立的路由数据）
             # 但我们需要重新运行模型来获取 hidden_states
             # 使用原始文本作为 encoder 输入，使用生成的token序列作为 decoder 输入
             encoder_inputs = tokenizer(original_text, return_tensors="pt", padding=True, truncation=True,
@@ -260,13 +291,39 @@ class OKRBasicExperiment(OKRExperimentFramework):
             else:
                 decoder_input_ids = torch.tensor([[decoder_start_token_id]], device=self.device, dtype=torch.long)
             
-            # 记录长度信息（用于调试）
-            # 检查路由数据的长度
-            routing_data_len = None
-            for name, module in watermarked_model.named_modules():
-                if hasattr(module, '_okr_all_selected_experts') and module._okr_all_selected_experts:
-                    routing_data_len = len(module._okr_all_selected_experts)
-                    break
+            # 关键修复：将当前样本的路由数据临时设置到router对象上，供检测器使用
+            # 检测前先清空router的路由数据，然后设置当前样本的路由数据
+            if hasattr(watermarked_model, 'clear_okr_stats'):
+                watermarked_model.clear_okr_stats()
+            
+            # 将当前样本的路由数据设置到第一个router对象上（避免多层重复）
+            if sample_routing is not None:
+                router_for_detection = None
+                router_found = False
+                for name, module in watermarked_model.named_modules():
+                    if hasattr(module, '_okr_all_selected_experts'):
+                        # 只使用第一个router（避免多层重复）
+                        if not router_found:
+                            router_for_detection = module
+                            router_found = True
+                            logger.debug(f"样本 {i}: 使用router {name} 进行检测")
+                            break
+                
+                if router_for_detection is not None:
+                    # 将当前样本的路由数据转换为列表格式（每个token一个元素）
+                    # sample_routing: [batch, seq_len, top_k]
+                    # 需要转换为列表，每个元素是 [batch, 1, top_k]
+                    routing_list = []
+                    for j in range(sample_routing.shape[1]):
+                        routing_list.append(sample_routing[:, j:j+1, :])
+                    router_for_detection._okr_all_selected_experts = routing_list
+                    routing_data_len = sample_routing.shape[1]
+                else:
+                    routing_data_len = 0
+                    logger.warning(f"样本 {i}: 未找到router对象")
+            else:
+                routing_data_len = 0
+                logger.warning(f"样本 {i}: 未找到路由数据")
             
             logger.info(f"样本 {i}: generated_seq长度={generated_seq.shape[0]}, decoder_input_ids长度={decoder_input_ids.shape[1]}, 路由数据长度={routing_data_len}, watermarked_text长度={len(watermarked_text)}")
             
