@@ -148,9 +148,19 @@ class OKRDetector:
                     decoder_input_ids = decoder_input_ids[:, :routing_seq_len]
             elif decoder_input_ids.shape[1] > routing_seq_len:
                 import logging
-                logging.getLogger("okr_detector").warning(f"decoder_input_ids长度({decoder_input_ids.shape[1]})大于路由数据长度({routing_seq_len})，将截断decoder_input_ids")
-                # 截断 decoder_input_ids 以匹配路由数据的长度
-                decoder_input_ids = decoder_input_ids[:, :routing_seq_len]
+                # 关键修复：路由数据长度通常比decoder_input_ids少1（因为起始token不需要路由决策）
+                # 如果差值正好是1，这是正常的，不需要截断
+                # 如果差值大于1，说明有问题，需要截断
+                diff = decoder_input_ids.shape[1] - routing_seq_len
+                if diff == 1:
+                    # 这是正常情况：decoder_input_ids包含起始token，路由数据不包含
+                    # 截断decoder_input_ids，去掉起始token，使其与路由数据对齐
+                    logging.getLogger("okr_detector").info(f"decoder_input_ids长度({decoder_input_ids.shape[1]})比路由数据长度({routing_seq_len})多1（正常：起始token），截断decoder_input_ids")
+                    decoder_input_ids = decoder_input_ids[:, 1:]  # 去掉起始token
+                else:
+                    # 差值大于1，可能有问题，截断到路由数据长度
+                    logging.getLogger("okr_detector").warning(f"decoder_input_ids长度({decoder_input_ids.shape[1]})大于路由数据长度({routing_seq_len})，差值={diff}，将截断decoder_input_ids")
+                    decoder_input_ids = decoder_input_ids[:, :routing_seq_len]
             
             # 重新运行模型获取 decoder 的 hidden states（用于计算水印信号和机会窗口）
             # 重要：使用生成的文本序列作为 decoder_input_ids，确保 hidden_states 与路由数据对应
@@ -182,16 +192,20 @@ class OKRDetector:
                 return 0.0, "No hidden states available"
             
             # 确保 hidden_states 的形状与 selected_experts 匹配
-            # selected_experts: [batch, seq, top_k] - 来自生成时的累积数据（已经截断为最后N个token）
-            # hidden_states: [batch, seq, dim] - 来自重新运行的模型
+            # selected_experts: [batch, seq, top_k] - 来自生成时的累积数据（已经对齐）
+            # hidden_states: [batch, seq, dim] - 来自重新运行的模型（decoder_input_ids对应的hidden states）
+            # 关键修复：确保长度完全匹配，如果不匹配，取较小的长度并记录警告
             if hidden_states.shape[1] != actual_selected_experts.shape[1]:
                 # 调整形状以匹配（取较小的长度）
                 min_seq_len = min(hidden_states.shape[1], actual_selected_experts.shape[1])
                 hidden_states = hidden_states[:, :min_seq_len, :]
-                # 注意：actual_selected_experts已经是从路由数据最后截取的，所以这里也取前min_seq_len个
                 actual_selected_experts = actual_selected_experts[:, :min_seq_len, :]
                 import logging
-                logging.getLogger("okr_detector").info(f"调整形状以匹配: hidden_states={hidden_states.shape}, selected_experts={actual_selected_experts.shape}")
+                diff = abs(hidden_states.shape[1] - actual_selected_experts.shape[1])
+                if diff > 0:
+                    logging.getLogger("okr_detector").warning(f"hidden_states长度({hidden_states.shape[1]})与selected_experts长度({actual_selected_experts.shape[1]})不匹配，差值={diff}，已截断到{min_seq_len}")
+                else:
+                    logging.getLogger("okr_detector").info(f"调整形状以匹配: hidden_states={hidden_states.shape}, selected_experts={actual_selected_experts.shape}")
         else:
             # 对于 decoder-only 模型（如 GPT）
             with torch.no_grad():
