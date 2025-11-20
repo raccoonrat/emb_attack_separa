@@ -72,6 +72,10 @@ class OKRRouter(nn.Module):
         # 2. 计算水印偏好 (Semantic Anchor Signal)
         # 利用矩阵乘法做 LSH 投影。
         # 这是一个纯粹的几何操作，对语义漂移鲁棒。
+        # 确保 secret_projection 在正确的设备上
+        if self.secret_projection.device != hidden_states.device:
+            self.secret_projection = self.secret_projection.to(hidden_states.device)
+        
         watermark_bias = torch.matmul(hidden_states, self.secret_projection)
 
         # 3. 计算安全掩码 (Indifference Zone)
@@ -86,6 +90,10 @@ class OKRRouter(nn.Module):
         # 注意：这里不需要判断 safe_mask 的 True 数量。
         # 如果只有一个 True (只有原本的 best)，那其他的全是 -inf，结果还是原本的 best。
         # 系统自动退化为无水印模式。
+        # 确保 watermark_bias 在正确的设备上
+        if watermark_bias.device != raw_logits.device:
+            watermark_bias = watermark_bias.to(raw_logits.device)
+        
         modified_scores = torch.where(
             safe_mask,
             watermark_bias, 

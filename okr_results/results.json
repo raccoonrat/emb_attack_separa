@@ -1,0 +1,74 @@
+{
+  "experiment_name": "OKR_Basic",
+  "config": {
+    "model": {
+      "model_name": "google/switch-base-8",
+      "model_type": "switch",
+      "device": "auto",
+      "torch_dtype": "float16",
+      "trust_remote_code": false,
+      "max_memory": {
+        "0": 5000000000
+      }
+    },
+    "watermark": {
+      "secret_key": "OKR_EXPERIMENT_KEY_2024",
+      "epsilon": 1.5,
+      "num_experts": 8,
+      "top_k": 1
+    },
+    "detection": {
+      "hit_rate_threshold": 0.8,
+      "min_opportunities": 10
+    },
+    "attack": {
+      "attack_type": "paraphrase",
+      "paraphrase_model": "Vamsi/T5_Paraphrase",
+      "attack_strength": "moderate"
+    },
+    "experiment": {
+      "experiment_name": "OKR_Basic",
+      "output_dir": "./okr_results",
+      "num_samples": 10,
+      "batch_size": 2,
+      "max_length": 128,
+      "seed": 42,
+      "dataset_name": null,
+      "dataset_split": null,
+      "custom_prompts": [
+        "The quick brown fox jumps over the lazy dog.",
+        "In a world where technology advances rapidly, artificial intelligence plays a crucial role.",
+        "Climate change is one of the most pressing issues facing humanity today."
+      ]
+    }
+  },
+  "summary": {
+    "total_samples": 3,
+    "watermarked_samples": 0,
+    "average_hit_rate": 0.027777778605620067,
+    "detection_threshold": 0.8
+  },
+  "detailed_results": [
+    {
+      "sample_id": 0,
+      "original_text": "The quick brown fox jumps over the lazy dog.",
+      "watermarked_text": "",
+      "hit_rate": 0.0,
+      "verdict": "Clean"
+    },
+    {
+      "sample_id": 1,
+      "original_text": "In a world where technology advances rapidly, artificial intelligence plays a crucial role.",
+      "watermarked_text": "the.......???????..?.?.?..?..?..?..?..?..?.?.?.?.?.?..?..?..?..?..).)...).).).).).)).).).).)..).),).",
+      "hit_rate": 0.0833333358168602,
+      "verdict": "Clean"
+    },
+    {
+      "sample_id": 2,
+      "original_text": "Climate change is one of the most pressing issues facing humanity today.",
+      "watermarked_text": "",
+      "hit_rate": 0.0,
+      "verdict": "Clean"
+    }
+  ]
+}

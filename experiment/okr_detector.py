@@ -34,34 +34,76 @@ class OKRDetector:
         self.model = model
         self.epsilon = epsilon
 
-    def detect(self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None):
+    def detect(self, input_ids: torch.Tensor, attention_mask: Optional[torch.Tensor] = None, 
+               decoder_input_ids: Optional[torch.Tensor] = None):
         """
         对一段文本进行检测。
         
         Args:
-            input_ids: 输入token IDs [batch, seq_len]
+            input_ids: 输入token IDs [batch, seq_len] (encoder输入，对于encoder-decoder模型)
             attention_mask: 注意力掩码 [batch, seq_len]
+            decoder_input_ids: decoder输入token IDs [batch, seq_len] (可选，如果不提供则使用input_ids)
             
         Returns:
             score: 水印命中率 (0-1)
             verdict: "Watermarked" 或 "Clean"
         """
-        # 1. 跑一遍模型，Hook 住 Router 的输入输出
-        # 这里假设我们能拿到每一层的 hidden_states 和 router 的选择
-        # 在实际工程中，这需要在此处注册 PyTorch Hook
-        # 为了演示，我们简化为处理单层数据
+        # 检查模型类型（encoder-decoder 还是 decoder-only）
+        is_encoder_decoder = hasattr(self.model.config, 'is_encoder_decoder') and self.model.config.is_encoder_decoder
         
-        # 获取模型的hidden states
-        with torch.no_grad():
-            outputs = self.model(input_ids=input_ids, attention_mask=attention_mask, output_hidden_states=True)
-            hidden_states = outputs.hidden_states[-1]  # 最后一层的hidden states
-        
-        # 获取实际选择的专家（需要从模型中提取）
-        # 这里假设模型已经保存了路由信息
-        actual_selected_experts = self._extract_selected_experts()
-        
-        if actual_selected_experts is None:
-            return 0.0, "No routing data available"
+        # 对于 encoder-decoder 模型（如 Switch Transformers），需要生成文本来触发所有层
+        # 这样路由信息才会被保存
+        if is_encoder_decoder:
+            # 使用 generate 来触发所有 decoder 层，这样会保存路由数据
+            with torch.no_grad():
+                # 生成少量 token 以触发所有层
+                generated = self.model.generate(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    max_length=input_ids.shape[1] + 10,  # 生成少量token
+                    num_beams=1,
+                    do_sample=False,
+                    output_hidden_states=True
+                )
+            
+            # 获取实际选择的专家（在generate过程中已保存）
+            actual_selected_experts = self._extract_selected_experts()
+            
+            if actual_selected_experts is None:
+                return 0.0, "No routing data available"
+            
+            # 重新运行模型获取 decoder 的 hidden states
+            # decoder_input_ids 应该是生成的文本（去掉最后一个token，因为那是预测的）
+            if decoder_input_ids is None:
+                # 使用生成的文本作为 decoder 输入（去掉最后一个token）
+                decoder_input_ids = generated[:, :-1] if generated.shape[1] > 1 else generated
+            
+            with torch.no_grad():
+                outputs = self.model(
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
+                    decoder_input_ids=decoder_input_ids,
+                    output_hidden_states=True
+                )
+            
+            # 获取 decoder 的最后一层 hidden states
+            if hasattr(outputs, 'decoder_hidden_states') and outputs.decoder_hidden_states:
+                hidden_states = outputs.decoder_hidden_states[-1]
+            elif hasattr(outputs, 'hidden_states') and outputs.hidden_states:
+                hidden_states = outputs.hidden_states[-1]
+            else:
+                return 0.0, "No hidden states available"
+        else:
+            # 对于 decoder-only 模型（如 GPT）
+            with torch.no_grad():
+                outputs = self.model(input_ids=input_ids, attention_mask=attention_mask, output_hidden_states=True)
+                hidden_states = outputs.hidden_states[-1]
+            
+            # 获取实际选择的专家
+            actual_selected_experts = self._extract_selected_experts()
+            
+            if actual_selected_experts is None:
+                return 0.0, "No routing data available"
         
         return self.verify_batch(hidden_states, actual_selected_experts)
 
@@ -133,11 +175,15 @@ class OKRDetector:
         """
         从模型中提取路由器
         
-        这是一个启发式方法，需要根据具体模型调整
+        由于我们只替换了 forward 方法，需要从 router 对象上获取 _okr_router
         """
-        # 如果没找到，尝试从第一层MoE获取
+        # 查找所有 router 对象，检查是否有 _okr_router 属性
         for name, module in self.model.named_modules():
-            # 检查是否是OKRRouter（通过检查是否有secret_projection和gate_network）
+            # 检查是否是 router（有 _okr_router 属性）
+            if hasattr(module, '_okr_router'):
+                return module._okr_router
+            
+            # 也检查是否是 OKRRouter（直接有 secret_projection 和 gate_network）
             if hasattr(module, 'secret_projection') and hasattr(module, 'gate_network'):
                 return module
         
@@ -149,14 +195,21 @@ class OKRDetector:
         
         这需要在forward过程中保存路由信息
         """
-        # 尝试从模型的属性中获取
+        # 尝试从模型的属性中获取（可能是列表，取最后一个）
         if hasattr(self.model, '_okr_routing_data'):
-            return self.model._okr_routing_data
+            routing_data = self.model._okr_routing_data
+            if isinstance(routing_data, list) and len(routing_data) > 0:
+                # 返回最后一个（最新的）
+                return routing_data[-1]
+            elif isinstance(routing_data, torch.Tensor):
+                return routing_data
         
-        # 尝试从各个层中获取
+        # 尝试从各个 router 层中获取
         for name, module in self.model.named_modules():
             if hasattr(module, '_selected_experts'):
-                return module._selected_experts
+                selected = module._selected_experts
+                if isinstance(selected, torch.Tensor):
+                    return selected
         
         return None
 

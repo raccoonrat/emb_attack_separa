@@ -212,10 +212,15 @@ class OKRBasicExperiment(OKRExperimentFramework):
         detection_results = []
         for i, (original_text, watermarked_text) in enumerate(zip(texts, watermarked_texts)):
             # 使用原始文本作为输入进行检测
+            # 对于 encoder-decoder 模型，input_ids 是 encoder 输入
             inputs = tokenizer(original_text, return_tensors="pt", padding=True, truncation=True,
                              max_length=self.config.experiment.max_length).to(self.device)
             
-            score, verdict = detector.detect(inputs["input_ids"])
+            # 检测器会自动处理 encoder-decoder 模型
+            score, verdict = detector.detect(
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs.get("attention_mask")
+            )
             detection_results.append({
                 "sample_id": i,
                 "original_text": original_text[:100],  # 截断显示

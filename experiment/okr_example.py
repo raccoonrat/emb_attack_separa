@@ -174,10 +174,16 @@ if __name__ == "__main__":
     # 注意：实际运行时需要根据你的模型和硬件调整
     # 取消注释下面的行来运行示例
     
-    # example_basic_usage()
-    # example_with_config()
-    # example_run_experiment()
-    # example_custom_experiment()
-    
-    print("请根据你的具体需求调用相应的示例函数")
+    # 默认运行快速实验
+    print("\n开始运行快速实验...")
+    try:
+        example_run_experiment()
+    except Exception as e:
+        print(f"\n实验运行出错: {e}")
+        print("请检查:")
+        print("  1. 是否已安装所有依赖 (transformers, torch, tqdm)")
+        print("  2. 是否有足够的 GPU 内存或使用 CPU")
+        print("  3. 网络连接是否正常（下载模型）")
+        import traceback
+        traceback.print_exc()
 
