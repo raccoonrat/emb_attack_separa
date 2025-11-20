@@ -219,23 +219,36 @@ def _create_compatible_forward(
     return compatible_forward
 
 
-# 便捷函数：支持MVESConfig
+# 便捷函数：支持配置对象
 def inject_okr_with_config(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM], 
                            config) -> Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM]:
     """
-    使用MVESConfig注入OKR
+    使用配置对象注入OKR
+    
+    支持 OKRConfig 和 MVESConfig（向后兼容）
     
     Args:
         model: 预训练的MoE模型
-        config: MVESConfig对象
+        config: OKRConfig 或 MVESConfig 对象
         
     Returns:
         patched_model: 已注入OKR的模型
     """
-    wm_config = config.watermark
+    # 检查配置类型
+    if hasattr(config, 'watermark'):
+        # OKRConfig 或 MVESConfig
+        wm_config = config.watermark
+        epsilon = wm_config.epsilon
+        secret_key = wm_config.secret_key
+    else:
+        # 直接传入 watermark 配置对象
+        wm_config = config
+        epsilon = wm_config.epsilon
+        secret_key = wm_config.secret_key
+    
     return inject_okr(
         model, 
-        epsilon=wm_config.epsilon,
-        secret_key=wm_config.secret_key
+        epsilon=epsilon,
+        secret_key=secret_key
     )
 
