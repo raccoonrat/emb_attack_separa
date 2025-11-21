@@ -54,7 +54,7 @@ print("\n1. 测试模块导入...")
 try:
     from okr_config import OKRConfig, get_default_okr_config
     from okr_kernel import OKRRouter
-    from okr_patch import inject_okr
+    from okr_patch import inject_okr, _initialize_secret_projection
     from okr_detector import OKRDetector
     print("✓ 所有模块导入成功")
 except ImportError as e:
@@ -77,6 +77,8 @@ except Exception as e:
 print("\n3. 测试 OKRRouter 核心逻辑...")
 try:
     router = OKRRouter(input_dim=512, num_experts=8, top_k=1, epsilon=1.5)
+    # 初始化 secret_projection（必须初始化才能使用）
+    _initialize_secret_projection(router, "TEST_SECRET_KEY", input_dim=512, num_experts=8, device=None)
     # 创建测试输入
     test_input = torch.randn(2, 10, 512)  # [batch, seq, dim]
     routing_weights, selected_experts = router(test_input)

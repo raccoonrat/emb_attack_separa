@@ -249,6 +249,11 @@ class OKRDetector:
             score: 水印命中率 (0-1)
             verdict: "Watermarked" 或 "Clean"
         """
+        # 关键修复：确保 actual_selected_experts 在正确的设备上
+        # 路由历史记录可能存储在 CPU（为了省显存），但当前计算在 GPU
+        if actual_selected_experts.device != hidden_states.device:
+            actual_selected_experts = actual_selected_experts.to(hidden_states.device)
+        
         # 获取 Router (假设模型只有一层或我们只看这一层)
         router = self._get_router()
         if router is None:
@@ -275,6 +280,7 @@ class OKRDetector:
 
         # 2. 重算水印信号 (Expected Signal)
         # 使用 OKR router 的 secret_projection
+        # 关键修复：确保 secret_projection 在正确的设备上
         if okr_router.secret_projection.device != hidden_states.device:
             secret_proj = okr_router.secret_projection.to(hidden_states.device)
         else:

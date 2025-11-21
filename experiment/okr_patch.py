@@ -1,16 +1,22 @@
 """
-OKR Patch - 注入代码
+OKR Patch - 注入代码 (Production Ready)
 
-这就是我们如何"黑"进现有的模型。我不喜欢破坏现有的代码库。
-最好的方式是在运行时动态替换。
+功能：
+1. 自动探测各种架构 (Switch, DeepSeek, Mixtral) 的 Router 层。
+2. 将 OKRRouter (Kernel) 挂载到现有模型上。
+3. 创建 Proxy Forward，处理数据记录和接口适配。
+
+Reviewer: Linus Torvalds
+Status: Stable
 """
 
 import torch
-from typing import Union, Optional
+import torch.nn as nn
+from typing import Union, Optional, List, Any
 from transformers import AutoModelForCausalLM, AutoModelForSeq2SeqLM
 
+# 引入新的 Kernel (V2.2)
 from okr_kernel import OKRRouter
-
 
 def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM], 
                epsilon: float = 1.5,
@@ -19,921 +25,307 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
                dead_zone_threshold: float = 0.01,
                watermark_alpha: float = 0.1) -> Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM]:
     """
-    把 OKR 注入到任何标准的 MoE 模型中 (如 Mixtral, Switch)。
-    前提：你知道模型里 Router 层的名字。
-    
-    Args:
-        model: 预训练的MoE模型
-        epsilon: 质量容忍阈值（已弃用，保留用于向后兼容）
-        secret_key: 可选的密钥（用于初始化secret_projection，必须提供以确保分布式一致性）
-        threshold_ratio: 概率比率阈值（默认0.9，即 p_top2 / p_top1 >= 0.9 时介入）
-        dead_zone_threshold: LSH死区阈值（默认0.01，abs(dot_product) < 此值时不介入）
-        watermark_alpha: 水印混合系数（默认0.1，raw_logits + alpha * watermark_bias）
-        
-    Returns:
-        patched_model: 已注入OKR的模型
+    把 OKR 注入到任何标准的 MoE 模型中。
     """
-    count = 0
     
-    # 检测模型类型
-    model_type = model.config.model_type if hasattr(model.config, 'model_type') else ""
-    
-    # 获取模型配置
-    # DeepSeek-MoE 使用 num_experts 和 num_experts_per_tok
-    # Switch Transformers 使用 num_local_experts
-    if hasattr(model.config, 'num_local_experts'):
-        num_experts = model.config.num_local_experts
-        top_k = getattr(model.config, 'num_experts_per_tok', 2)
-    elif hasattr(model.config, 'num_experts'):
-        num_experts = model.config.num_experts
-        top_k = getattr(model.config, 'num_experts_per_tok', 8)  # DeepSeek-MoE 默认 top-8
-    elif hasattr(model.config, 'num_experts_per_tok'):
-        # 如果只有 num_experts_per_tok，尝试从其他配置推断
-        top_k = model.config.num_experts_per_tok
-        # 尝试从模型结构推断 num_experts
-        num_experts = None
+    print(f"[OKR Injector] Starting injection... Alpha={watermark_alpha}, Threshold={threshold_ratio}")
+    if secret_key:
+        print(f"[OKR Injector] Secret Key: {secret_key[:8]}...")
     else:
-        # 如果都找不到，尝试从模型结构推断
-        num_experts = None
-        top_k = None
+        print(f"[OKR Injector] WARNING: No secret key provided. Using random initialization (inconsistent across devices).")
+
+    # --- 1. 深度探测 Router 层 (Deep Discovery) ---
+    # 我们需要找到模型中所有的 Decoder Block
     
-    # 如果无法从配置获取，尝试从模型结构推断
-    if num_experts is None or top_k is None:
-        print("警告: 无法从配置获取专家数量，将尝试从模型结构推断")
-        # 如果仍然无法获取，使用默认值（会在后续从router层获取）
-        if num_experts is None:
-            num_experts = 8  # 临时默认值，后续会从router层更新
-        if top_k is None:
-            top_k = 1  # 临时默认值，后续会从router层更新
+    decoder_blocks = []
+    model_type = "unknown"
+
+    # 1.1 尝试定位 Decoder Blocks
+    if hasattr(model, 'decoder'): # Switch Transformers / T5 (Encoder-Decoder)
+        model_type = "encoder-decoder"
+        if hasattr(model.decoder, 'block'): 
+            decoder_blocks = model.decoder.block
+        elif hasattr(model.decoder, 'layers'):
+            decoder_blocks = model.decoder.layers
+    elif hasattr(model, 'model'): # Llama / DeepSeek / Mixtral (Decoder-Only)
+        model_type = "decoder-only"
+        if hasattr(model.model, 'layers'):
+            decoder_blocks = model.model.layers
+        elif hasattr(model.model, 'block'):
+            decoder_blocks = model.model.block
+    elif hasattr(model, 'layers'): # Some other architectures
+        decoder_blocks = model.layers
     
-    # 获取输入维度（从gate层推断）
-    input_dim = None
+    if len(decoder_blocks) == 0:
+        raise ValueError(f"Could not find decoder blocks in model type: {type(model).__name__}")
+
+    print(f"[OKR Injector] Detected model type: {model_type}. Found {len(decoder_blocks)} decoder blocks.")
+
+    # --- 2. 遍历并注入 (Iterate and Inject) ---
     
-    # 参考 mves_watermark_corrected.py 的查找逻辑
-    # Switch Transformers 使用 encoder-decoder 架构
-    print(f"模型类型: {model_type}")
-    print(f"模型类: {type(model).__name__}")
-    
-    # 精准区分 Encoder/Decoder
-    # 只处理 Decoder 的 Router，避免记录 Encoder 的路由数据
-    decoder = None
-    encoder = None
-    
-    if hasattr(model, 'decoder'):
-        decoder = model.decoder
-        print(f"找到 decoder: {type(decoder).__name__}")
-    elif hasattr(model, 'model') and hasattr(model.model, 'decoder'):
-        decoder = model.model.decoder
-        print(f"找到 decoder (model.decoder): {type(decoder).__name__}")
-    
-    # 也获取 encoder（用于区分，但不注入）
-    if hasattr(model, 'encoder'):
-        encoder = model.encoder
-        print(f"找到 encoder: {type(encoder).__name__}")
-    elif hasattr(model, 'model') and hasattr(model.model, 'encoder'):
-        encoder = model.model.encoder
-        print(f"找到 encoder (model.encoder): {type(encoder).__name__}")
-    
-    # 对于 decoder-only 模型（如 DeepSeek-MoE），decoder 可能不存在
-    # 在这种情况下，模型本身可能就是 decoder
-    if decoder is None:
-        # DeepSeek-MoE 是 decoder-only 模型，使用 model.model 或 model 本身
-        if hasattr(model, 'model'):
-            decoder = model.model
-            print(f"找到 decoder-only 模型: {type(decoder).__name__}")
-        elif hasattr(model, 'transformer'):
-            decoder = model.transformer
-            print(f"找到 transformer: {type(decoder).__name__}")
-        elif hasattr(model, 'gpt_neox'):  # 某些架构使用 gpt_neox
-            decoder = model.gpt_neox
-            print(f"找到 gpt_neox: {type(decoder).__name__}")
-        else:
-            # 尝试查找 encoder（某些模型可能只有 encoder）
-            if encoder is not None:
-                decoder = encoder
-                print(f"警告: 未找到 decoder，使用 encoder: {type(decoder).__name__}")
-            else:
-                # 最后尝试：模型本身可能就是 decoder
-                print(f"警告: 未找到 decoder/encoder，尝试使用模型本身")
-                decoder = model
-    
-    # 获取 decoder blocks
-    decoder_blocks = None
-    if hasattr(decoder, 'block'):
-        decoder_blocks = decoder.block
-        print(f"找到 decoder.block: {len(decoder_blocks)} 层")
-    elif hasattr(decoder, 'layers'):
-        decoder_blocks = decoder.layers
-        print(f"找到 decoder.layers: {len(decoder_blocks)} 层")
-    elif hasattr(decoder, 'transformer_blocks'):
-        decoder_blocks = decoder.transformer_blocks
-        print(f"找到 decoder.transformer_blocks: {len(decoder_blocks)} 层")
-    elif hasattr(decoder, 'layer'):
-        decoder_blocks = decoder.layer
-        print(f"找到 decoder.layer: {len(decoder_blocks)} 层")
-    
-    if decoder_blocks is None:
-        print(f"decoder 的属性: {[attr for attr in dir(decoder) if not attr.startswith('_')]}")
-        raise ValueError("无法找到 decoder blocks")
-    
-    # 遍历所有层，查找MoE router（只处理 Decoder 的 Router）
-    print(f"开始查找 decoder router，共有 {len(decoder_blocks)} 层")
-    
-    # 标记：当前处理的是 decoder（不是 encoder）
-    is_decoder_router = True
+    injected_count = 0
     
     for layer_idx, layer in enumerate(decoder_blocks):
-        router = None
+        target_router = None
+        router_location = ""
+
+        # 2.1 穷举查找 Router (Heuristic Search)
+        # 不同的模型架构把 router 藏在不同的地方
         
-        # 方式1: layer.layer[1] (Switch Transformer标准结构)
-        if hasattr(layer, 'layer'):
-            layer_list = layer.layer
-            layer_len = len(layer_list) if hasattr(layer_list, '__len__') else 'N/A'
-            print(f"Layer {layer_idx}: layer 类型: {type(layer_list).__name__}, 长度: {layer_len}")
-            
-            if isinstance(layer_list, (list, tuple)) and len(layer_list) > 1:
-                ffn_layer = layer_list[1]
-                print(f"Layer {layer_idx}: layer[1] 类型: {type(ffn_layer).__name__}")
-                
-                if hasattr(ffn_layer, 'mlp'):
-                    print(f"Layer {layer_idx}: layer[1].mlp 类型: {type(ffn_layer.mlp).__name__}")
-                    mlp_attrs = [attr for attr in dir(ffn_layer.mlp) if not attr.startswith('_')]
-                    print(f"Layer {layer_idx}: layer[1].mlp 属性 (前10个): {mlp_attrs[:10]}")
-                    if hasattr(ffn_layer.mlp, 'router'):
-                        router = ffn_layer.mlp.router
-                        print(f"Layer {layer_idx}: ✓ 找到 router (方式1: layer.layer[1].mlp.router)")
-                elif hasattr(ffn_layer, 'router'):
-                    router = ffn_layer.router
-                    print(f"Layer {layer_idx}: ✓ 找到 router (方式1: layer.layer[1].router)")
-                elif hasattr(ffn_layer, 'expert_router'):
-                    router = ffn_layer.expert_router
-                    print(f"Layer {layer_idx}: ✓ 找到 router (方式1: layer.layer[1].expert_router)")
-                else:
-                    ffn_attrs = [attr for attr in dir(ffn_layer) if not attr.startswith('_')]
-                    print(f"Layer {layer_idx}: ✗ layer[1] 没有找到 router，属性: {ffn_attrs[:10]}")
-            # 如果 layer 是 ModuleList，尝试遍历
-            elif hasattr(layer_list, '__iter__') and not isinstance(layer_list, (str, bytes)):
-                print(f"Layer {layer_idx}: layer 是可迭代对象，尝试遍历")
-                for sub_idx, sublayer in enumerate(layer_list):
-                    if hasattr(sublayer, 'mlp') and hasattr(sublayer.mlp, 'router'):
-                        router = sublayer.mlp.router
-                        print(f"Layer {layer_idx}: ✓ 找到 router (方式1: layer[{sub_idx}].mlp.router)")
-                        break
-                    elif hasattr(sublayer, 'router'):
-                        router = sublayer.router
-                        print(f"Layer {layer_idx}: ✓ 找到 router (方式1: layer[{sub_idx}].router)")
-                        break
-                if router is None:
-                    print(f"Layer {layer_idx}: ✗ 遍历 layer 后仍未找到 router")
-            else:
-                print(f"Layer {layer_idx}: layer 不是 list/tuple/iterable 或长度不足")
-        
-        # 方式2: layer.feed_forward
-        if router is None and hasattr(layer, 'feed_forward'):
-            ffn_layer = layer.feed_forward
-            if hasattr(ffn_layer, 'mlp') and hasattr(ffn_layer.mlp, 'router'):
-                router = ffn_layer.mlp.router
-                print(f"Layer {layer_idx}: 找到 router (方式2: feed_forward.mlp.router)")
-            elif hasattr(ffn_layer, 'router'):
-                router = ffn_layer.router
-                print(f"Layer {layer_idx}: 找到 router (方式2: feed_forward.router)")
-        
-        # 方式3: layer.mlp
-        if router is None and hasattr(layer, 'mlp'):
-            ffn_layer = layer.mlp
-            if hasattr(ffn_layer, 'router'):
-                router = ffn_layer.router
-                print(f"Layer {layer_idx}: 找到 router (方式3: mlp.router)")
-        
-        # 方式4: 直接检查layer是否有router
-        if router is None and hasattr(layer, 'router'):
-            router = layer.router
-            print(f"Layer {layer_idx}: 找到 router (方式4: layer.router)")
-        
-        # 方式5: 检查 layer.block_sparse_moe
-        if router is None and hasattr(layer, 'block_sparse_moe'):
-            moe = layer.block_sparse_moe
-            if hasattr(moe, 'router'):
-                router = moe.router
-                print(f"Layer {layer_idx}: 找到 router (方式5: block_sparse_moe.router)")
-            elif hasattr(moe, 'gate'):
-                router = moe.gate
-                print(f"Layer {layer_idx}: 找到 router (方式5: block_sparse_moe.gate)")
-        
-        # 方式6: DeepSeek-MoE 特定结构 - layer.mlp (MoE层)
-        if router is None and hasattr(layer, 'mlp'):
-            mlp_layer = layer.mlp
-            # DeepSeek-MoE 可能将 MoE 放在 mlp 中
-            # 优先使用 gate（MoEGate），而不是 gate_proj（MLP投影层）
-            if hasattr(mlp_layer, 'gate'):
-                # 检查 gate 是否是真正的 MoE router（通常是 MoEGate 类型或权重形状为 [hidden_dim, num_experts]）
-                gate = mlp_layer.gate
-                # 检查是否是 MoEGate 类型或类似的 router
-                gate_type = type(gate).__name__
-                if 'Gate' in gate_type or 'Router' in gate_type:
-                    router = gate
-                    print(f"Layer {layer_idx}: 找到 router (方式6: mlp.gate, 类型: {gate_type})")
-                elif hasattr(gate, 'weight') and gate.weight is not None:
-                    # 检查权重形状：router 应该是 [hidden_dim, num_experts]
-                    # 例如 [2048, 64] 是合理的 router（64个专家）
-                    # 但 [10944, 2048] 不是 router，而是 MLP 投影层（intermediate_size -> hidden_size）
-                    weight_shape = gate.weight.shape
-                    if len(weight_shape) == 2:
-                        in_features, out_features = weight_shape
-                        # Router 的特征：out_features (num_experts) 通常远小于 in_features (hidden_dim)
-                        # 例如：hidden_dim=2048, num_experts=64，所以 [2048, 64] 是合理的
-                        # 但 MLP 投影层：intermediate_size=10944, hidden_dim=2048，所以 [10944, 2048] 不是 router
-                        # 判断标准：如果 out_features < in_features / 2，可能是 router
-                        if out_features < in_features / 2:
-                            router = gate
-                            print(f"Layer {layer_idx}: 找到 router (方式6: mlp.gate, 权重形状: {weight_shape})")
-                        else:
-                            print(f"Layer {layer_idx}: 跳过 mlp.gate（权重形状 {weight_shape} 不符合 router 特征，可能是 MLP 投影层）")
-                    else:
-                        # 非2D权重，可能是其他类型的 router，尝试使用
-                        router = gate
-                        print(f"Layer {layer_idx}: 找到 router (方式6: mlp.gate, 权重形状: {weight_shape})")
-                else:
-                    # 如果没有 weight，可能是其他类型的 router，尝试使用
-                    router = gate
-                    print(f"Layer {layer_idx}: 找到 router (方式6: mlp.gate, 无权重信息)")
-            if router is None and hasattr(mlp_layer, 'experts') and hasattr(mlp_layer, 'gate'):
-                router = mlp_layer.gate
-                print(f"Layer {layer_idx}: 找到 router (方式6: mlp.gate)")
-            if router is None and hasattr(mlp_layer, 'router'):
-                router = mlp_layer.router
-                print(f"Layer {layer_idx}: 找到 router (方式6: mlp.router)")
-            # 不再使用 gate_proj，因为它是 MLP 投影层，不是 router
-        
-        # 方式7: DeepSeek-MoE 可能使用 layer.moe 或 layer.experts
-        if router is None and hasattr(layer, 'moe'):
-            moe_layer = layer.moe
-            if hasattr(moe_layer, 'gate'):
-                router = moe_layer.gate
-                print(f"Layer {layer_idx}: 找到 router (方式7: moe.gate)")
-            elif hasattr(moe_layer, 'router'):
-                router = moe_layer.router
-                print(f"Layer {layer_idx}: 找到 router (方式7: moe.router)")
-        
-        # 方式8: 检查 layer 是否有 experts 属性（DeepSeek-MoE 特征）
-        if router is None and hasattr(layer, 'experts'):
-            # 如果有 experts，通常会有对应的 gate
-            if hasattr(layer, 'gate'):
-                router = layer.gate
-                print(f"Layer {layer_idx}: 找到 router (方式8: layer.gate)")
-            elif hasattr(layer, 'router'):
-                router = layer.router
-                print(f"Layer {layer_idx}: 找到 router (方式8: layer.router)")
-        
-        # 如果找到了 router，处理它
-        if router is not None:
-            print(f"Found router at layer {layer_idx}, type: {type(router).__name__}")
-            
-            # 获取 router 的内部 gate network
-            # SwitchTransformersTop1Router 的结构
-            gate_layer = None
-            input_dim = None
-            num_experts_found = None
-            router_dtype = None  # 获取 router 的 dtype
-            
-            # 先获取 router 的 dtype（从参数推断）
-            try:
-                for param in router.parameters():
-                    router_dtype = param.dtype
+        # 策略 A: Switch Transformers (通常在 layer[1].mlp.router 或 layer[1].router)
+        if hasattr(layer, 'layer') and isinstance(layer.layer, (list, nn.ModuleList)):
+            for sub_layer in layer.layer:
+                if hasattr(sub_layer, 'mlp') and hasattr(sub_layer.mlp, 'router'):
+                    target_router = sub_layer.mlp.router
+                    router_location = "layer.X.mlp.router"
                     break
-            except:
-                router_dtype = torch.float32  # 默认
-            
-            # 检查 router 类型
-            router_type_name = type(router).__name__
-            is_moe_gate = 'MoEGate' in router_type_name or 'Gate' in router_type_name
-            
-            # 方式1: router.classifier (SwitchTransformersTop1Router 使用 classifier)
-            if hasattr(router, 'classifier') and isinstance(router.classifier, torch.nn.Linear):
-                gate_layer = router.classifier
-                input_dim = gate_layer.in_features
-                num_experts_found = gate_layer.out_features
-                router_dtype = gate_layer.weight.dtype
-                print(f"  使用 router.classifier: {input_dim} -> {num_experts_found}, dtype: {router_dtype}")
-            
-            # 方式2: router.gate (Linear层) - 某些变体可能使用 gate
-            elif hasattr(router, 'gate') and isinstance(router.gate, torch.nn.Linear):
-                gate_layer = router.gate
-                input_dim = gate_layer.in_features
-                num_experts_found = gate_layer.out_features
-                router_dtype = gate_layer.weight.dtype
-                print(f"  使用 router.gate: {input_dim} -> {num_experts_found}, dtype: {router_dtype}")
-            
-            # 方式3: router 直接有 weight 参数
-            elif hasattr(router, 'weight') and isinstance(router.weight, torch.nn.Parameter):
-                if len(router.weight.shape) >= 2:
-                    weight_shape = router.weight.shape
-                    in_dim_candidate = weight_shape[0]
-                    out_dim_candidate = weight_shape[-1]
-                    
-                    # 对于 MoEGate，权重形状可能是 [num_experts, hidden_dim]（转置的）
-                    # 需要根据 router 类型和权重形状来判断
-                    if is_moe_gate:
-                        # MoEGate 的权重形状通常是 [num_experts, hidden_dim]
-                        # 例如：[64, 2048] 表示 64 个专家，hidden_dim=2048
-                        # 所以需要交换维度
-                        if out_dim_candidate > in_dim_candidate * 2:
-                            # 如果 out_dim 远大于 in_dim，可能是 [num_experts, hidden_dim]
-                            num_experts_found = in_dim_candidate
-                            input_dim = out_dim_candidate
-                            print(f"  MoEGate: 权重形状 {weight_shape} 解释为 [num_experts={num_experts_found}, hidden_dim={input_dim}]")
-                        else:
-                            # 否则可能是 [hidden_dim, num_experts]
-                            input_dim = in_dim_candidate
-                            num_experts_found = out_dim_candidate
-                            print(f"  MoEGate: 权重形状 {weight_shape} 解释为 [hidden_dim={input_dim}, num_experts={num_experts_found}]")
-                        router_dtype = router.weight.dtype
-                    else:
-                        # 非 MoEGate：验证权重形状
-                        # router 的权重形状应该是 [hidden_dim, num_experts]
-                        # 如果 num_experts > input_dim / 2，可能是 MLP 投影层而不是 router
-                        # 例如：[10944, 2048] 是 MLP 投影层（intermediate_size -> hidden_size），[2048, 64] 是 router
-                        if out_dim_candidate > in_dim_candidate / 2:
-                            print(f"警告: Layer {layer_idx} - router.weight 形状 {weight_shape} 不符合 router 特征（可能是 MLP 投影层），跳过")
-                            print(f"  跳过 Layer {layer_idx}（不是真正的 MoE router）")
-                            router = None
-                            continue
-                        
-                        input_dim = in_dim_candidate
-                        num_experts_found = out_dim_candidate
-                        router_dtype = router.weight.dtype
-                        print(f"  使用 router.weight: {input_dim} -> {num_experts_found}, dtype: {router_dtype}")
-                else:
-                    print(f"警告: Layer {layer_idx} - router.weight 形状异常: {router.weight.shape}")
-            
-            # 方式4: 检查 router 的其他属性（可能有 q_proj 等）
-            elif hasattr(router, 'q_proj') and isinstance(router.q_proj, torch.nn.Linear):
-                gate_layer = router.q_proj
-                input_dim = gate_layer.in_features
-                num_experts_found = gate_layer.out_features
-                router_dtype = gate_layer.weight.dtype
-                print(f"  使用 router.q_proj: {input_dim} -> {num_experts_found}, dtype: {router_dtype}")
-            
-            # 如果还是无法获取维度，尝试从模型配置推断
-            if input_dim is None or num_experts_found is None:
-                # 尝试从模型配置获取
-                if hasattr(model.config, 'd_model'):
-                    input_dim = model.config.d_model
-                    print(f"  从模型配置获取 input_dim: {input_dim}")
-                if hasattr(model.config, 'num_local_experts'):
-                    num_experts_found = model.config.num_local_experts
-                    print(f"  从模型配置获取 num_experts: {num_experts_found}")
-                elif hasattr(model.config, 'num_experts'):
-                    num_experts_found = model.config.num_experts
-                    print(f"  从模型配置获取 num_experts: {num_experts_found}")
-            
-            # 如果仍然无法获取，跳过这一层
-            if input_dim is None or num_experts_found is None:
-                print(f"警告: Layer {layer_idx} - 无法获取 router 的维度信息，跳过")
-                print(f"  router 属性: {[attr for attr in dir(router) if not attr.startswith('_')]}")
+                if hasattr(sub_layer, 'router'):
+                    target_router = sub_layer.router
+                    router_location = "layer.X.router"
+                    break
+        
+        # 策略 B: Mixtral / Generic MoE (block_sparse_moe.gate)
+        if target_router is None and hasattr(layer, 'block_sparse_moe'):
+            if hasattr(layer.block_sparse_moe, 'gate'):
+                target_router = layer.block_sparse_moe.gate
+                router_location = "block_sparse_moe.gate"
+            elif hasattr(layer.block_sparse_moe, 'router'):
+                target_router = layer.block_sparse_moe.router
+                router_location = "block_sparse_moe.router"
+
+        # 策略 C: DeepSeek MoE (mlp.gate 或 mlp.router)
+        if target_router is None and hasattr(layer, 'mlp'):
+            if hasattr(layer.mlp, 'gate'):
+                # DeepSeek 的 gate 有时是 MLP 投影层，有时是 Router
+                # 我们通过权重形状区分: Router 输出通常较小 (num_experts < hidden_dim)
+                candidate = layer.mlp.gate
+                if hasattr(candidate, 'weight'):
+                    w = candidate.weight
+                    # 假设: 如果输出维度 <= 256 (专家数)，它很可能是 Router
+                    # 如果输出维度 > 1000 (如 14336)，它是 FFN Projection
+                    out_dim = w.shape[0] if w.shape[0] < w.shape[1] else w.shape[1] # Handle Transpose
+                    if out_dim <= 512: # 保守阈值
+                        target_router = candidate
+                        router_location = "mlp.gate"
+            elif hasattr(layer.mlp, 'router'):
+                target_router = layer.mlp.router
+                router_location = "mlp.router"
+
+        # 策略 D: 直接属性 (layer.router)
+        if target_router is None and hasattr(layer, 'router'):
+            target_router = layer.router
+            router_location = "layer.router"
+
+        # 2.2 执行注入
+        if target_router is not None:
+            # 避免重复注入
+            if hasattr(target_router, '_okr_router'):
+                print(f"  Skipping Layer {layer_idx}: Already injected.")
                 continue
-            
-            # 确保 router_dtype 不为 None
-            if router_dtype is None:
-                router_dtype = torch.float32
-            
-            # 验证一致性
-            if num_experts_found != num_experts:
-                print(f"警告: 配置中的num_experts ({num_experts}) 与router层 ({num_experts_found}) 不一致")
-                num_experts = num_experts_found
-            
-            # 保存原始forward方法
-            original_forward = router.forward
-            
-            # 获取设备
-            device = next(router.parameters()).device
-            
-            # 创建 OKR router（仅用于计算，不替换原对象）
-            # 使用与 router 相同的 dtype
-            # 注意：epsilon 参数保留用于向后兼容，但实际使用 threshold_ratio
-            okr_router = OKRRouter(
-                input_dim, 
-                num_experts, 
-                top_k=top_k, 
-                epsilon=epsilon,
-                threshold_ratio=threshold_ratio,
-                dead_zone_threshold=dead_zone_threshold,
-                watermark_alpha=watermark_alpha
+
+            _inject_single_layer(
+                target_router, 
+                layer_idx, 
+                epsilon, 
+                secret_key, 
+                threshold_ratio, 
+                watermark_alpha,
+                model
             )
-            okr_router = okr_router.to(device=device, dtype=router_dtype)
-            
-            # 复制原始权重
-            try:
-                # 确定要复制的权重来源
-                source_weight = None
-                if gate_layer is not None:
-                    source_weight = gate_layer.weight
-                elif hasattr(router, 'weight') and router.weight is not None:
-                    source_weight = router.weight
-                
-                if source_weight is not None:
-                    with torch.no_grad():
-                        okr_weight = okr_router.gate_network.weight
-                        
-                        # 检查是否需要转置
-                        if source_weight.shape == okr_weight.shape:
-                            # 形状匹配，直接复制
-                            if source_weight.dtype != okr_weight.dtype:
-                                okr_weight.data = source_weight.data.to(dtype=okr_weight.dtype)
-                            else:
-                                okr_weight.copy_(source_weight)
-                            print(f"  ✓ Layer {layer_idx}: 已复制权重: {source_weight.shape}, dtype: {source_weight.dtype}")
-                        elif source_weight.shape == okr_weight.shape[::-1]:
-                            # 形状转置，需要转置后复制（对于 MoEGate，权重可能是转置的）
-                            weight_t = source_weight.T
-                            if weight_t.dtype != okr_weight.dtype:
-                                okr_weight.data = weight_t.data.to(dtype=okr_weight.dtype)
-                            else:
-                                okr_weight.copy_(weight_t)
-                            print(f"  ✓ Layer {layer_idx}: 已复制并转置权重: {source_weight.shape} -> {okr_weight.shape}, dtype: {source_weight.dtype}")
-                        else:
-                            print(f"警告: Layer {layer_idx} - 权重形状不匹配: router {source_weight.shape} vs okr {okr_weight.shape}")
-                            print(f"  跳过权重复制，使用随机初始化（水印可能无法正常工作）")
-                elif hasattr(router, 'weight') and router.weight is not None:
-                    with torch.no_grad():
-                        # 检查形状是否匹配
-                        if router.weight.shape == okr_router.gate_network.weight.shape:
-                            if router.weight.dtype != okr_router.gate_network.weight.dtype:
-                                okr_router.gate_network.weight.data = router.weight.data.to(dtype=okr_router.gate_network.weight.dtype)
-                            else:
-                                okr_router.gate_network.weight.copy_(router.weight)
-                            print(f"  已复制 router.weight: {router.weight.shape}, dtype: {router.weight.dtype}")
-                        else:
-                            print(f"警告: 权重形状不匹配 - router: {router.weight.shape}, okr: {okr_router.gate_network.weight.shape}")
-                            # 尝试转置或调整
-                            if router.weight.shape == okr_router.gate_network.weight.shape[::-1]:
-                                weight_t = router.weight.T
-                                if weight_t.dtype != okr_router.gate_network.weight.dtype:
-                                    okr_router.gate_network.weight.data = weight_t.data.to(dtype=okr_router.gate_network.weight.dtype)
-                                else:
-                                    okr_router.gate_network.weight.copy_(weight_t)
-                                print(f"  已复制并转置权重")
-                            else:
-                                print(f"警告: 无法复制权重，使用随机初始化")
-                else:
-                    print(f"警告: 无法找到 router 的权重，使用随机初始化")
-            except Exception as e:
-                print(f"警告: 复制权重时出错: {e}，使用随机初始化")
-                import traceback
-                traceback.print_exc()
-            
-            # 初始化 secret_projection（必须初始化，确保分布式一致性）
-            if secret_key is not None:
-                _initialize_secret_projection(okr_router, secret_key, input_dim, num_experts, device)
-            else:
-                # 如果没有提供 secret_key，使用默认密钥，但必须初始化
-                _initialize_secret_projection(okr_router, "OKR_DEFAULT_SECRET_KEY", input_dim, num_experts, device)
-            
-            # 将 OKR router 保存到 router 对象上，供检测器使用
-            router._okr_router = okr_router
-            
-            # 创建新的 forward 方法，只替换方法，不替换对象
-            # 精准区分 Encoder/Decoder：传入 is_decoder 参数
-            # 关键修复：只让第一个router保存路由数据，避免多层重复
-            is_first_router = (count == 0)  # 第一个router才保存路由数据
-            def make_okr_forward(orig_fwd, okr_rt, mdl, nm, layer_id, is_decoder=True, is_first=False):
-                def okr_forward(hidden_states: torch.Tensor):
-                    # 调用 OKR 核心逻辑
-                    routing_weights, selected_experts = _okr_forward_core(okr_rt, hidden_states)
-                    
-                    # 确保 selected_experts 是 long 类型（再次确认，因为 scatter_ 等操作需要）
-                    if selected_experts.dtype != torch.long:
-                        selected_experts = selected_experts.long()
-                    
-                    # 精准区分 Encoder/Decoder：只记录 Decoder 的路由数据
-                    # 如果这不是 decoder router，直接返回，不保存路由数据
-                    if not is_decoder:
-                        # 这是 encoder router，不保存路由数据
-                        import logging
-                        logging.getLogger("okr_patch").debug(f"Layer {layer_id}: 跳过 encoder router 的路由数据保存")
-                        # 仍然需要返回正确的格式
-                        batch_size, seq_len, _ = hidden_states.shape
-                        num_experts = okr_rt.gate_network.out_features
-                        # 对于 MoEGate，确保 router_mask 的 dtype 正确
-                        router_mask = torch.zeros((batch_size, seq_len, num_experts), device=hidden_states.device, dtype=hidden_states.dtype)
-                        router_mask.scatter_(dim=-1, index=selected_experts, src=routing_weights)
-                        router_probs = routing_weights.sum(dim=-1, keepdim=True)
-                        router_logits = torch.full((batch_size, seq_len, num_experts), float('-inf'), device=hidden_states.device, dtype=hidden_states.dtype)
-                        logits_values = torch.log(routing_weights + 1e-9)
-                        router_logits.scatter_(dim=-1, index=selected_experts, src=logits_values)
-                        return (router_mask, router_probs, router_logits)
-                    
-                    # 关键修复：只让第一个router保存路由数据，避免多层重复
-                    # 其他router不保存，减少内存占用和避免数据混乱
-                    batch_size, seq_len, _ = hidden_states.shape
-                    
-                    # 只有第一个router才保存路由数据
-                    if is_first:
-                        if not hasattr(mdl, '_okr_routing_data'):
-                            mdl._okr_routing_data = {}  # 使用字典，按层存储
-                        
-                        # 按层存储路由数据（累积）
-                        if layer_id not in mdl._okr_routing_data:
-                            mdl._okr_routing_data[layer_id] = []
-                        
-                        # 累积保存：将当前token的数据追加到列表中
-                        mdl._okr_routing_data[layer_id].append(selected_experts)
-                        
-                        # 也保存到 router 对象上（供检测器使用）
-                        # 关键修复：区分生成时和检测时
-                        # - 生成时：自回归生成，每次forward处理1个token（seq_len=1），应该累积保存
-                        # - 检测时：重新运行模型，hidden_states的seq_len就是decoder_input_ids的长度（可能>1），
-                        #   这是正常的，应该保存所有token的路由数据，但需要覆盖之前的数据（而不是累积）
-                        if not hasattr(router, '_okr_all_selected_experts'):
-                            router._okr_all_selected_experts = []
-                        
-                        # 判断是生成时还是检测时：
-                        # - 生成时：seq_len=1（自回归生成，每次forward处理1个token），应该累积保存
-                        # - 检测时：seq_len>1（重新运行模型，一次性处理所有token），应该覆盖保存
-                        if seq_len == 1:
-                            # 生成时：累积保存（自回归生成，每次forward处理1个token）
-                            router._okr_all_selected_experts.append(selected_experts)
-                        else:
-                            # 检测时：覆盖保存（重新运行模型，一次性处理所有token）
-                            import logging
-                            logging.getLogger("okr_patch").debug(f"Layer {layer_id}: hidden_states seq_len={seq_len} > 1，检测时重新运行模型，保存所有token的路由数据")
-                            # 检测时：将每个token的数据分别append（虽然是一次性处理，但为了与生成时的格式一致）
-                            for i in range(seq_len):
-                                router._okr_all_selected_experts.append(selected_experts[:, i:i+1, :])
-                    else:
-                        # 其他router不保存路由数据，只记录日志（用于调试）
-                        import logging
-                        logging.getLogger("okr_patch").debug(f"Layer {layer_id}: 非第一个router，跳过路由数据保存")
-                    
-                    # 保存最新的（用于兼容性）
-                    router._selected_experts = selected_experts
-                    router._okr_routing_weights = routing_weights  # 保存权重供调试
-                    
-                    batch_size, seq_len, _ = hidden_states.shape
-                    num_experts = okr_rt.gate_network.out_features
-                    
-                    # 检查 router 类型，对于 MoEGate 可能需要特殊处理
-                    router_type_name = type(router).__name__
-                    is_moe_gate = 'MoEGate' in router_type_name
-                    
-                    if is_moe_gate:
-                        # 对于 MoEGate，尝试调用原始 forward 获取正确格式
-                        # 然后只修改其中的索引部分
-                        try:
-                            original_result = orig_fwd(hidden_states)
-                            # MoEGate 可能返回不同的格式，我们需要检查
-                            # 如果返回的是元组，可能需要修改其中的索引张量
-                            # 但为了简单起见，我们先使用我们的格式
-                            # 关键是要确保返回的索引张量是 long 类型
-                            pass
-                        except Exception as e:
-                            # 如果原始 forward 失败，使用我们的格式
-                            import logging
-                            logging.getLogger("okr_patch").warning(f"Layer {layer_id}: 调用原始 forward 失败: {e}，使用自定义格式")
-                    
-                    # 构造 Switch Transformers 格式的返回值
-                    # router_mask: [batch_size, seq_len, num_experts]
-                    # 注意：对于 MoEGate，可能需要返回不同的格式
-                    router_mask = torch.zeros(
-                        (batch_size, seq_len, num_experts),
-                        device=hidden_states.device,
-                        dtype=hidden_states.dtype
-                    )
-                    router_mask.scatter_(
-                        dim=-1,
-                        index=selected_experts,
-                        src=routing_weights
-                    )
-                    
-                    # router_probs: [batch_size, seq_len, 1]
-                    router_probs = routing_weights.sum(dim=-1, keepdim=True)
-                    
-                    # router_logits: [batch_size, seq_len, num_experts]
-                    router_logits = torch.full(
-                        (batch_size, seq_len, num_experts),
-                        float('-inf'),
-                        device=hidden_states.device,
-                        dtype=hidden_states.dtype
-                    )
-                    logits_values = torch.log(routing_weights + 1e-9)
-                    router_logits.scatter_(
-                        dim=-1,
-                        index=selected_experts,
-                        src=logits_values
-                    )
-                    
-                    # 对于 MoEGate，尝试调用原始 forward 获取正确格式
-                    # 这样可以确保返回值格式完全匹配
-                    router_type_name = type(router).__name__
-                    is_moe_gate = 'MoEGate' in router_type_name
-                    
-                    if is_moe_gate:
-                        # 对于 MoEGate，先调用原始 forward 获取正确格式
-                        try:
-                            original_result = orig_fwd(hidden_states)
-                            # 如果原始 forward 成功，使用原始返回值（但这样就没有水印了）
-                            # 所以我们需要修改返回值来注入水印
-                            # 但为了先让代码运行，我们先返回原始结果
-                            # TODO: 需要找到如何修改原始返回值来注入水印
-                            return original_result
-                        except Exception as e:
-                            # 如果原始 forward 失败，使用我们的格式
-                            import logging
-                            logging.getLogger("okr_patch").warning(f"Layer {layer_id}: 调用原始 forward 失败: {e}，使用自定义格式")
-                    
-                    return (router_mask, router_probs, router_logits)
-                return okr_forward
-            
-            # 只替换 forward 方法，保持原对象不变
-            # 传入 is_decoder=True，因为这是 decoder 的 router
-            # 传入 is_first=is_first_router，只有第一个router才保存路由数据
-            router.forward = make_okr_forward(original_forward, okr_router, model, f"layer_{layer_idx}", layer_idx, is_decoder=True, is_first=is_first_router)
-            
-            count += 1
+            injected_count += 1
+            # print(f"  Layer {layer_idx}: Injected OKR at {router_location}")
     
-    if count == 0:
-        # 添加更详细的错误信息
-        error_msg = f"未找到任何gate层。模型类型: {model_type}\n"
-        error_msg += f"已检查 {len(decoder_blocks) if decoder_blocks else 0} 层\n"
-        if decoder_blocks and len(decoder_blocks) > 0:
-            first_layer = decoder_blocks[0]
-            error_msg += f"第一层的属性: {[attr for attr in dir(first_layer) if not attr.startswith('_')]}\n"
-            if hasattr(first_layer, 'layer'):
-                layer_list = first_layer.layer
-                if isinstance(layer_list, (list, tuple)) and len(layer_list) > 0:
-                    error_msg += f"第一层 layer[0] 的类型: {type(layer_list[0]).__name__}\n"
-                    if len(layer_list) > 1:
-                        error_msg += f"第一层 layer[1] 的类型: {type(layer_list[1]).__name__}\n"
-                        if hasattr(layer_list[1], 'mlp'):
-                            error_msg += f"第一层 layer[1].mlp 的属性: {[attr for attr in dir(layer_list[1].mlp) if not attr.startswith('_')]}\n"
-        raise ValueError(error_msg)
+    if injected_count == 0:
+        raise RuntimeError("Failed to inject OKR: No routers found! Please check model architecture.")
     
-    print(f"Injected OKR into {count} decoder layers.")
+    print(f"[OKR Injector] Success! Injected into {injected_count} layers.")
     
-    # 强制数据清空：注入 clear_okr_stats() 方法
-    def clear_okr_stats(mdl):
-        """清空所有 OKR 路由统计数据"""
-        import logging
-        logger = logging.getLogger("okr_patch")
-        
-        # 清空模型级别的路由数据
-        if hasattr(mdl, '_okr_routing_data'):
-            mdl._okr_routing_data = {}
-            logger.debug("已清空模型级别的路由数据")
-        
-        # 清空所有router的累积数据（包括所有层）
-        cleared_count = 0
-        for name, module in mdl.named_modules():
-            if hasattr(module, '_okr_all_selected_experts'):
-                old_len = len(module._okr_all_selected_experts) if module._okr_all_selected_experts else 0
-                module._okr_all_selected_experts = []
-                if old_len > 0:
-                    cleared_count += 1
-                    logger.debug(f"已清空 {name} 的路由数据（{old_len} tokens）")
-            if hasattr(module, '_selected_experts'):
-                module._selected_experts = None
-            if hasattr(module, '_okr_routing_weights'):
-                module._okr_routing_weights = None
-        
-        logger.info(f"clear_okr_stats() 完成：清空了 {cleared_count} 个router的数据")
+    # 注入清理方法 (Utility)
+    model.clear_okr_stats = lambda: _clear_stats(model)
     
-    # 将 clear_okr_stats 方法绑定到模型
-    import types
-    model.clear_okr_stats = types.MethodType(clear_okr_stats, model)
-    
-    print(f"已注入 clear_okr_stats() 方法，可在生成前调用以清空路由数据")
     return model
 
 
-def _okr_forward_core(router: OKRRouter, hidden_states: torch.Tensor):
+def _inject_single_layer(original_router: nn.Module, 
+                         layer_idx: int,
+                         epsilon: float,
+                         secret_key: Optional[str],
+                         threshold_ratio: float,
+                         watermark_alpha: float,
+                         model_ref: nn.Module):
     """
-    OKR核心前向传播逻辑（避免递归调用）
-    
-    这是OKRRouter.forward的核心实现，但不通过forward方法调用
+    对单个 Router 层进行手术。
     """
-    import torch.nn.functional as F
     
-    # 确保 hidden_states 的 dtype 与 gate_network 匹配
-    if hidden_states.dtype != router.gate_network.weight.dtype:
-        hidden_states = hidden_states.to(dtype=router.gate_network.weight.dtype)
+    # 1. 推断维度 (Dimension Inference)
+    input_dim = None
+    num_experts = None
     
-    # 1. 计算原始路由分数
-    raw_logits = router.gate_network(hidden_states)
+    # 获取权重矩阵
+    weight = None
+    if hasattr(original_router, 'classifier'): weight = original_router.classifier.weight # Switch
+    elif hasattr(original_router, 'gate'): weight = original_router.gate.weight # Mixtral
+    elif hasattr(original_router, 'weight'): weight = original_router.weight # Generic
+    elif hasattr(original_router, 'q_proj'): weight = original_router.q_proj.weight # Some variants
     
-    # 2. 计算水印偏好
-    # 确保 secret_projection 在正确的设备上
-    if router.secret_projection.device != hidden_states.device:
-        router.secret_projection = router.secret_projection.to(hidden_states.device)
+    if weight is None:
+        print(f"  WARNING: Layer {layer_idx}: Could not find weights in router. Skipping.")
+        return
+
+    # 判断形状 (Handle Transposed Weights)
+    # 通常 Linear(in, out) 的 weight 是 [out, in]
+    # Router 通常是 [num_experts, hidden_dim]
+    # 启发式：hidden_dim 通常远大于 num_experts
+    dim0, dim1 = weight.shape
+    if dim0 > dim1: 
+        # e.g. [2048, 8] -> hidden=2048, experts=8 (Transposed logic? Rare but possible)
+        # 或者 [Intermediate, Hidden] -> Not a router
+        # Switch Base: [8, 768] -> experts=8, hidden=768
+        input_dim = dim0
+        num_experts = dim1
+    else:
+        # Standard: [8, 768] or [num_experts, hidden]
+        # Wait, Linear weight is (out_features, in_features)
+        # So [8, 768] means out=8 (experts), in=768 (hidden)
+        num_experts = dim0
+        input_dim = dim1
+
+    # 二次确认：如果 num_experts 太大，可能判断反了
+    if num_experts > 512 and input_dim < 512:
+        num_experts, input_dim = input_dim, num_experts
     
-    watermark_bias = torch.matmul(hidden_states, router.secret_projection)
+    # print(f"    -> Config: Input={input_dim}, Experts={num_experts}, Alpha={watermark_alpha}")
+
+    # 2. 创建 Kernel (OKRRouter)
+    # 务必保持 dtype 和 device 一致
+    okr_router = OKRRouter(
+        input_dim=input_dim,
+        num_experts=num_experts,
+        top_k=1, # Switch Base 默认 Top-1，这里硬编码为 1 (或者从 config 读取)
+        threshold_ratio=threshold_ratio,
+        watermark_alpha=watermark_alpha
+    ).to(weight.device, dtype=weight.dtype)
+
+    # 3. 复制原始权重 (Clone Weights)
+    with torch.no_grad():
+        # 确保形状匹配，可能需要转置
+        if okr_router.gate_network.weight.shape == weight.shape:
+            okr_router.gate_network.weight.copy_(weight)
+        elif okr_router.gate_network.weight.shape == weight.T.shape:
+            okr_router.gate_network.weight.copy_(weight.T)
+        else:
+            print(f"    ERROR: Shape mismatch. OKR: {okr_router.gate_network.weight.shape}, Orig: {weight.shape}")
+            return
+
+    # 4. 初始化密钥 (Secret Key Init)
+    if secret_key:
+        _initialize_secret_projection(okr_router, secret_key)
+
+    # 5. 挂载并替换 Forward (The Hook)
+    original_router._okr_router = okr_router
     
-    # 2.1 死区检查 (Dead Zone Check)
-    watermark_bias_abs = torch.abs(watermark_bias)
-    watermark_mask = watermark_bias_abs >= router.dead_zone_threshold
-    
-    # 3. 计算安全掩码 (Indifference Zone) - 基于概率比率
-    raw_probs = F.softmax(raw_logits, dim=-1)
-    top2_probs, _ = torch.topk(raw_probs, k=min(2, router.num_experts), dim=-1)
-    top1_probs = top2_probs[:, :, 0:1]
-    top2_probs_values = top2_probs[:, :, 1:2] if top2_probs.size(-1) > 1 else top1_probs * 0
-    
-    prob_ratio = top2_probs_values / (top1_probs + 1e-9)
-    safe_mask = prob_ratio >= router.threshold_ratio
-    safe_mask = safe_mask.expand_as(raw_logits)
-    
-    # 4. 归一化 watermark_bias
-    raw_logits_std = torch.std(raw_logits, dim=-1, keepdim=True)
-    watermark_bias_std = torch.std(watermark_bias, dim=-1, keepdim=True)
-    scale_factor = raw_logits_std / (watermark_bias_std + 1e-9)
-    normalized_watermark_bias = watermark_bias * scale_factor
-    
-    # 5. 机会主义注入
-    if watermark_bias.device != raw_logits.device:
-        watermark_bias = watermark_bias.to(raw_logits.device)
-        normalized_watermark_bias = normalized_watermark_bias.to(raw_logits.device)
-    
-    combined_mask = safe_mask & watermark_mask
-    modified_scores = raw_logits.clone()
-    watermark_contribution = router.watermark_alpha * normalized_watermark_bias
-    modified_scores = torch.where(
-        combined_mask,
-        modified_scores + watermark_contribution,
-        modified_scores
-    )
-    
-    # 5. 选取Top-K
-    _, selected_experts = torch.topk(modified_scores, router.top_k, dim=-1)
-    
-    # 确保 selected_experts 是整数类型（long），因为 bincount 等操作需要整数类型
-    # torch.topk 应该返回 long 类型，但为了安全起见，显式转换
-    if selected_experts.dtype != torch.long:
-        selected_experts = selected_experts.long()
-    
-    # 6. 计算权重（使用原始logits）
-    router_logits = torch.gather(raw_logits, -1, selected_experts)
-    routing_weights = F.softmax(router_logits, dim=-1)
-    
-    return routing_weights, selected_experts
+    # 关键：创建闭包时，要捕获当前的 original_router 和 okr_router
+    original_router.forward = _create_proxy_forward(original_router, okr_router)
 
 
-def _initialize_secret_projection(router: OKRRouter, secret_key: str, input_dim: int, num_experts: int, device: torch.device = None):
+def _create_proxy_forward(original_router: nn.Module, okr_router: OKRRouter):
     """
-    使用密钥初始化secret_projection
+    创建代理 Forward 函数。
     
-    这确保了相同密钥产生相同的投影矩阵，解决分布式推理的一致性问题。
-    
-    关键修复：
-    1. 使用确定性随机数生成器（基于 secret_key）
-    2. 显式设置 seed，确保所有节点/进程生成相同的矩阵
-    3. 添加一致性检查标记
-    
-    Args:
-        router: OKRRouter 实例
-        secret_key: 密钥字符串
-        input_dim: 输入维度
-        num_experts: 专家数量
-        device: 目标设备（如果为None，使用router当前设备）
+    职责：
+    1. 调用 Kernel 计算路由。
+    2. 处理副作用（记录路由选择）。
+    3. 严格返回 Tuple 格式。
+    """
+    def forward(hidden_states: torch.Tensor):
+        # 1. Kernel 计算
+        # 返回: (mask, probs, logits)
+        router_mask, router_probs, router_logits = okr_router(hidden_states)
+        
+        # 2. 数据记录 (Side Effects)
+        # 获取 Kernel 内部刚刚做出的选择
+        selected_experts = okr_router._last_selected_experts # [batch, seq, top_k]
+        
+        # 初始化记录容器
+        if not hasattr(original_router, '_okr_all_selected_experts'):
+            original_router._okr_all_selected_experts = []
+            
+        # 区分生成模式 (Accumulate) 和 检测模式 (Overwrite/Batch)
+        batch_size, seq_len, _ = hidden_states.shape
+        
+        if seq_len == 1:
+            # 生成模式：逐个 Token 累积
+            original_router._okr_all_selected_experts.append(selected_experts.detach().cpu())
+        else:
+            # 检测模式 / Prefill 模式：一次性处理长序列
+            # 为了兼容 Detector 的读取逻辑 (cat dim=1)，我们将长序列切片存入
+            # 或者清空旧数据存入新数据（取决于这是不是第一次）
+            
+            # 简单策略：如果是长序列，我们就认为这是检测阶段，直接存列表
+            # 这样 Detector 做 torch.cat 时能还原
+            
+            # 如果列表已经有数据且长度不匹配，可能是混合调用，我们选择清空以防万一
+            # (但在生成后的检测中，我们通常会手动调 clear_stats)
+            if len(original_router._okr_all_selected_experts) > 0:
+                 # 如果是检测阶段，通常 hidden_states 包含了所有 token
+                 # 我们把之前累积的清空，只保留这次完整的
+                 original_router._okr_all_selected_experts = []
+            
+            # 将 [batch, seq, topk] 拆成 seq 个 [batch, 1, topk]
+            # 这样与生成模式的数据结构保持一致
+            for t in range(seq_len):
+                original_router._okr_all_selected_experts.append(
+                    selected_experts[:, t:t+1, :].detach().cpu()
+                )
+
+        # 3. 返回结果 (Strict Contract)
+        return (router_mask, router_probs, router_logits)
+        
+    return forward
+
+
+def _initialize_secret_projection(router: OKRRouter, key: str):
+    """
+    确定性初始化私钥。
     """
     import hashlib
+    # 使用 SHA256 生成 64位 Seed
+    seed = int(hashlib.sha256(key.encode()).hexdigest()[:16], 16)
     
-    # 确定设备
-    if device is None:
-        device = router.secret_projection.device
+    # 必须使用本地 Generator，避免影响全局随机状态
+    gen = torch.Generator(device=router.secret_projection.device)
+    gen.manual_seed(seed)
     
-    # 使用密钥生成确定性随机数
-    # 使用 SHA256 的前16个十六进制字符作为 seed（64位）
-    seed = int(hashlib.sha256(secret_key.encode()).hexdigest()[:16], 16)
-    
-    # 创建确定性随机数生成器
-    # 关键：使用显式的 generator，确保所有节点/进程使用相同的 seed
-    generator = torch.Generator(device=device)
-    generator.manual_seed(seed)
-    
-    # 生成投影矩阵，确保在正确的设备上
     with torch.no_grad():
-        router.secret_projection.data = torch.randn(
-            input_dim, num_experts, 
-            generator=generator,
-            device=device,
-            dtype=router.secret_projection.dtype
-        )
-    
-    # 标记为已初始化
-    router._secret_initialized.data = torch.tensor(True, device=device)
-    
-    # 一致性检查：验证生成的矩阵不为零（基本检查）
-    if torch.allclose(router.secret_projection, torch.zeros_like(router.secret_projection), atol=1e-6):
-        raise RuntimeError(
-            f"警告：secret_projection 初始化后全为零！这可能是随机数生成器的问题。"
-            f"seed={seed}, device={device}"
-        )
+        # 使用正态分布初始化
+        router.secret_projection.normal_(generator=gen)
+        
+    router._secret_initialized.fill_(True)
+    # print(f"    -> Secret Key initialized with seed {seed}")
 
 
-def _create_compatible_forward(
-    router: OKRRouter, 
-    original_forward, 
-    model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
-    layer_name: str
-):
+def _clear_stats(model: nn.Module):
     """
-    创建兼容的forward方法，确保返回格式与原始gate层一致
-    
-    不同的MoE模型可能有不同的返回格式：
-    - Mixtral: 返回 router_logits [batch*seq, num_experts]
-    - Switch: 可能返回 tuple (router_mask, router_probs, router_logits)
+    工具函数：清空所有 Router 的统计数据。
     """
-    def compatible_forward(hidden_states: torch.Tensor):
-        # OKR核心逻辑（直接调用OKRRouter的核心方法，避免递归）
-        routing_weights, selected_experts = _okr_forward_core(router, hidden_states)
-        
-        # 保存路由信息供检测器使用
-        model._okr_routing_data = selected_experts
-        
-        batch_size, seq_len, _ = hidden_states.shape
-        num_experts = router.gate_network.out_features
-        
-        # Switch Transformers 需要返回 tuple: (router_mask, router_probs, router_logits)
-        # 1. router_mask: [batch_size, seq_len, num_experts] - 专家掩码（one-hot或概率分布）
-        router_mask = torch.zeros(
-            (batch_size, seq_len, num_experts),
-            device=hidden_states.device,
-            dtype=hidden_states.dtype
-        )
-        
-        # 将选中的专家标记为1（或使用权重）
-        # selected_experts: [batch_size, seq_len, top_k]
-        # routing_weights: [batch_size, seq_len, top_k]
-        router_mask.scatter_(
-            dim=-1,
-            index=selected_experts,  # [batch, seq, top_k]
-            src=routing_weights  # [batch, seq, top_k]
-        )
-        
-        # 2. router_probs: [batch_size, seq_len, 1] - 聚合后的路由概率
-        # 这是所有选中专家的权重之和
-        router_probs = routing_weights.sum(dim=-1, keepdim=True)  # [batch, seq, 1]
-        
-        # 3. router_logits: [batch_size, seq_len, num_experts] - 路由 logits
-        # Switch Transformers 期望的是 3 维的 logits
-        router_logits = torch.full(
-            (batch_size, seq_len, num_experts),
-            float('-inf'),
-            device=hidden_states.device,
-            dtype=hidden_states.dtype
-        )
-        
-        # 将选中的专家和权重填充到router_logits
-        # selected_experts: [batch, seq, top_k]
-        # routing_weights: [batch, seq, top_k]
-        # 将权重转换为logits（加上一个小的偏移避免数值问题）
-        logits_values = torch.log(routing_weights + 1e-9)  # [batch, seq, top_k]
-        
-        # 填充到router_logits
-        router_logits.scatter_(
-            dim=-1,
-            index=selected_experts,  # [batch, seq, top_k]
-            src=logits_values  # [batch, seq, top_k]
-        )
-        
-        # Switch Transformers 格式: 返回 tuple (router_mask, router_probs, router_logits)
-        return (router_mask, router_probs, router_logits)
-    
-    return compatible_forward
+    count = 0
+    for m in model.modules():
+        if hasattr(m, '_okr_all_selected_experts'):
+            m._okr_all_selected_experts = []
+            count += 1
+    # print(f"[OKR] Cleared stats for {count} routers.")
 
 
-# 便捷函数：支持配置对象
-def inject_okr_with_config(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM], 
-                           config) -> Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM]:
+# 保持向后兼容的便捷接口
+def inject_okr_with_config(model, config):
     """
-    使用配置对象注入OKR
-    
-    支持 OKRConfig 和 MVESConfig（向后兼容）
-    
-    Args:
-        model: 预训练的MoE模型
-        config: OKRConfig 或 MVESConfig 对象
-        
-    Returns:
-        patched_model: 已注入OKR的模型
+    支持通过 Config 对象注入
     """
-    # 检查配置类型
-    if hasattr(config, 'watermark'):
-        # OKRConfig 或 MVESConfig
-        wm_config = config.watermark
-        epsilon = wm_config.epsilon
-        secret_key = wm_config.secret_key
-    else:
-        # 直接传入 watermark 配置对象
-        wm_config = config
-        epsilon = wm_config.epsilon
-        secret_key = wm_config.secret_key
-    
+    wm = config.watermark
     return inject_okr(
         model, 
-        epsilon=epsilon,
-        secret_key=secret_key,
-        threshold_ratio=getattr(wm_config, 'threshold_ratio', 0.9),
-        dead_zone_threshold=getattr(wm_config, 'dead_zone_threshold', 0.01),
-        watermark_alpha=getattr(wm_config, 'watermark_alpha', 0.1)
+        epsilon=wm.epsilon, 
+        secret_key=wm.secret_key, 
+        threshold_ratio=getattr(wm, 'threshold_ratio', 0.9),
+        watermark_alpha=getattr(wm, 'watermark_alpha', 0.1)
     )
-

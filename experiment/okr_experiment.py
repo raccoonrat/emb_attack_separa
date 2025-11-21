@@ -257,7 +257,22 @@ class OKRBasicExperiment(OKRExperimentFramework):
                     if hasattr(module, '_okr_all_selected_experts'):
                         module._okr_all_selected_experts = []
             
-            inputs = tokenizer(text, return_tensors="pt", padding=True, truncation=True, 
+            # 对于 Switch Transformers (T5-based)，需要添加任务前缀才能正确生成
+            # T5 模型通常需要任务前缀，如 "translate:", "summarize:", "generate:" 等
+            # 如果没有前缀，模型可能不知道要执行什么任务，导致一直生成 pad_token
+            input_text = text
+            
+            # 检查是否是 T5/Switch Transformers 模型
+            is_t5_model = hasattr(watermarked_model.config, 'model_type') and 't5' in watermarked_model.config.model_type.lower()
+            if is_t5_model:
+                # 对于 T5 模型，添加任务前缀以正确生成文本
+                # 使用 "generate:" 前缀，这是一个通用的生成任务
+                # 如果模型不支持 "generate:"，可以尝试其他前缀如 "translate English to English:"
+                if not text.lower().startswith(('translate', 'summarize', 'generate', 'question', 'answer')):
+                    input_text = f"generate: {text}"
+                    logger.debug(f"为 T5 模型添加任务前缀: 'generate:'")
+            
+            inputs = tokenizer(input_text, return_tensors="pt", padding=True, truncation=True, 
                             max_length=self.config.experiment.max_length).to(self.device)
             
             # 判断模型类型：decoder-only 还是 encoder-decoder
@@ -275,23 +290,122 @@ class OKRBasicExperiment(OKRExperimentFramework):
                         use_cache=False,  # 禁用 cache 以避免兼容性问题
                         pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id
                     )
+                    # decoder-only 模型：outputs[0] 包含完整序列（输入+生成）
+                    # 需要提取新生成的部分
+                    input_length = inputs["input_ids"].shape[1]
+                    generated_token_ids = outputs[0][input_length:]  # 只取新生成的部分
                 else:
                     # encoder-decoder 模型（如 Switch Transformers）
+                    # 对于 T5/Switch Transformers，decoder_start_token_id 通常是 pad_token_id (0)
+                    # 但需要确保 eos_token_id 正确设置以停止生成
                     decoder_start_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
-                    outputs = watermarked_model.generate(
-                        **inputs,
-                        max_length=self.config.experiment.max_length,
-                        num_beams=1,
-                        do_sample=False,
-                        use_cache=False,  # 禁用 cache 以避免兼容性问题
-                        decoder_start_token_id=decoder_start_token_id,
-                        pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id
+                    eos_token_id = tokenizer.eos_token_id if tokenizer.eos_token_id is not None else tokenizer.pad_token_id
+                    
+                    # 计算合理的生成长度
+                    input_length = inputs["input_ids"].shape[1]
+                    max_new_tokens = min(self.config.experiment.max_length - input_length, 128)  # 最多生成128个新token
+                    
+                    # 检查模型配置中的 decoder_start_token_id
+                    if hasattr(watermarked_model.config, 'decoder_start_token_id') and watermarked_model.config.decoder_start_token_id is not None:
+                        decoder_start_token_id = watermarked_model.config.decoder_start_token_id
+                        logger.debug(f"使用模型配置中的 decoder_start_token_id: {decoder_start_token_id}")
+                    
+                    # 关键修复：只使用 max_new_tokens，避免与 max_length 冲突
+                    # 对于 encoder-decoder 模型，使用 max_new_tokens 更合适
+                    try:
+                        outputs = watermarked_model.generate(
+                            **inputs,
+                            max_new_tokens=max_new_tokens,  # 只使用 max_new_tokens，避免冲突
+                            num_beams=1,
+                            do_sample=False,
+                            use_cache=False,  # 禁用 cache 以避免兼容性问题
+                            decoder_start_token_id=decoder_start_token_id,
+                            eos_token_id=eos_token_id,  # 明确设置 eos_token_id 以正确停止生成
+                            pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id
+                        )
+                    except Exception as e:
+                        logger.warning(f"生成时出错: {e}，尝试使用 max_length 参数")
+                        # 如果出错，尝试使用 max_length（某些旧版本可能不支持 max_new_tokens）
+                        max_length = input_length + max_new_tokens
+                        outputs = watermarked_model.generate(
+                            **inputs,
+                            max_length=max_length,  # 回退到 max_length
+                            num_beams=1,
+                            do_sample=False,
+                            decoder_start_token_id=decoder_start_token_id,
+                            pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id
+                        )
+                    # encoder-decoder 模型：outputs[0] 只包含 decoder 的输出序列
+                    generated_token_ids = outputs[0]
+                    
+                    # 诊断：检查生成的 token 是否全是 pad_token
+                    if len(generated_token_ids.shape) > 1:
+                        tokens_check = generated_token_ids[0]
+                    else:
+                        tokens_check = generated_token_ids
+                    unique_tokens = set(tokens_check.cpu().tolist())
+                    pad_token_id = tokenizer.pad_token_id
+                    if pad_token_id is not None and len(unique_tokens) == 1 and pad_token_id in unique_tokens:
+                        logger.warning(
+                            f"样本 {len(watermarked_texts) + 1}: 生成的 token 序列全是 pad_token ({pad_token_id})。"
+                            f"这可能是因为 Switch Transformers 需要任务前缀（如 'translate:', 'summarize:'）才能正确生成文本。"
+                            f"当前输入: '{text[:50]}...'"
+                        )
+                        # 尝试添加任务前缀（如果模型支持）
+                        # 注意：这可能会改变生成结果，但至少可以测试模型是否能生成非 pad_token
+                        # 暂时不自动添加前缀，保持实验的一致性
+            
+            # 解码生成的文本
+            # 对于 encoder-decoder 模型，可能需要移除 decoder_start_token_id
+            # 确保 tokens_to_decode 是 1D tensor
+            if len(generated_token_ids.shape) > 1:
+                tokens_to_decode = generated_token_ids[0]  # 取第一个 batch
+            else:
+                tokens_to_decode = generated_token_ids
+            
+            if not is_decoder_only:
+                # encoder-decoder 模型：移除 decoder_start_token_id（如果存在）
+                decoder_start_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+                if tokens_to_decode.shape[0] > 0 and tokens_to_decode[0].item() == decoder_start_token_id:
+                    tokens_to_decode = tokens_to_decode[1:]  # 移除第一个 token（decoder_start_token_id）
+            
+            # 先尝试跳过特殊 token
+            generated_text = tokenizer.decode(tokens_to_decode, skip_special_tokens=True)
+            
+            # 如果结果为空，尝试不过滤特殊 token，但手动过滤 pad_token
+            if not generated_text.strip():
+                pad_token_id = tokenizer.pad_token_id
+                eos_token_id = tokenizer.eos_token_id
+                
+                # 手动过滤 pad_token 和 eos_token，并找到第一个 eos_token 的位置（如果存在）
+                filtered_tokens = []
+                found_eos = False
+                for token_id in tokens_to_decode.cpu().tolist():
+                    if eos_token_id is not None and token_id == eos_token_id:
+                        found_eos = True
+                        break  # 遇到 eos_token 就停止，后面的都是填充
+                    if pad_token_id is not None and token_id == pad_token_id:
+                        continue  # 跳过 pad_token
+                    filtered_tokens.append(token_id)
+                
+                if filtered_tokens:
+                    generated_text = tokenizer.decode(filtered_tokens, skip_special_tokens=False)
+                    # 再次尝试跳过特殊 token（除了 pad 和 eos）
+                    if not generated_text.strip():
+                        generated_text = tokenizer.decode(filtered_tokens, skip_special_tokens=True)
+                else:
+                    # 如果所有 token 都是特殊 token，至少显示原始解码结果
+                    generated_text = tokenizer.decode(tokens_to_decode, skip_special_tokens=False)
+                    # 添加调试信息
+                    unique_tokens = set(tokens_to_decode.cpu().tolist())
+                    logger.warning(
+                        f"样本 {len(watermarked_texts) + 1}: 生成的 token 序列全是特殊 token，"
+                        f"唯一token ID: {unique_tokens}, pad_token_id={pad_token_id}, eos_token_id={eos_token_id}"
                     )
             
-            generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
             watermarked_texts.append(generated_text)
             # 保存生成的token序列（用于检测）
-            watermarked_token_ids.append(outputs[0])
+            watermarked_token_ids.append(outputs[0])  # 保存完整的 outputs[0] 用于检测
             
             # 关键修复：立即提取并保存当前样本的路由数据，避免累积
             # 问题：每个decoder层都有自己的router，每个router都在保存路由数据
