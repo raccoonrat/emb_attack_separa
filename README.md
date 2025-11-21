@@ -1,31 +1,50 @@
-# MoE 水印论文与实现项目
+# OKR (Opportunistic Keyed Routing) 水印算法
 
-本项目包含关于 MoE（混合专家模型）专家激活水印对抗释义攻击的理论证明论文的 LaTeX 源文件，以及相应的 Python 实现代码。
+## 概述
 
-## 📋 目录
+OKR 是一个独立的水印算法实验框架，专门用于验证 Opportunistic Keyed Routing 方法在 MoE（混合专家）模型中的表现。
 
-- [项目结构](#项目结构)
-- [快速开始](#快速开始)
-- [使用手册](#使用手册)
-- [环境配置](#环境配置)
-- [理论文档](#理论文档)
-- [常见问题](#常见问题)
+**核心特点：**
+- 完全独立的水印算法实现，不耦合其他代码
+- 使用 LSH（局部敏感哈希）实现语义锚点，抗释义攻击
+- 机会主义路由：只在安全区域内修改路由，保证输出质量
+- 纯 Tensor 操作，零 CPU 交互，高性能
 
 ## 📁 项目结构
 
 ```
 .
 ├── README.md                    # 项目说明文件（本文件）
-├── *.tex                        # LaTeX 源文件（论文主文件）
-├── styles/                      # LaTeX 样式文件目录
-│   └── usenix2020_SOUPS.sty    # USENIX SOUPS 2020 会议模板样式
-├── build/                       # 编译输出目录
+├── OKR_BRANCH_GUIDE.md          # OKR分支创建指南
+├── OKR_Colab_Experiment.ipynb   # Colab 实验笔记本
+├── okr/                         # OKR 算法相关文档
+│   ├── Opportunistic Keyed Routing V2.1.md
+│   ├── Opportunistic Keyed Routing V2.0.md
+│   ├── LSH亚线性表达解释.md
+│   └── ...
+├── okr_results/                 # 实验结果目录（根目录）
+│   ├── results.json
+│   └── ...
 └── experiment/                  # Python 实现代码
-    ├── main.py                 # 主程序入口
-    ├── detector.py             # 水印检测器
-    ├── mves_watermark_corrected.py  # 水印嵌入实现
-    ├── requirements.txt         # Python 依赖
-    └── *.md                    # 技术文档
+    ├── okr_config.py           # OKR 配置类
+    ├── okr_experiment.py       # OKR 实验框架
+    ├── okr_example.py          # 使用示例
+    ├── okr_kernel.py           # OKR 核心路由逻辑
+    ├── okr_patch.py            # 水印注入代码
+    ├── okr_detector.py         # 水印检测器
+    ├── OKR_README.md           # 详细使用文档
+    ├── START_OKR_EXPERIMENT.md # 快速开始指南
+    ├── run_okr_experiment.py   # 实验运行脚本
+    ├── run_okr_with_sudo.sh    # 使用sudo运行的脚本
+    ├── test_okr_basic.py       # 基础测试脚本
+    ├── test_okr_deepseek_moe_local.py  # DeepSeek-MoE测试
+    ├── okr_results/            # 实验结果目录
+    ├── utils/                  # 工具模块
+    │   ├── logger.py
+    │   ├── exceptions.py
+    │   └── performance.py
+    ├── requirements.txt        # Python 依赖
+    └── environment.yml         # Conda 环境配置
 ```
 
 ## 🚀 快速开始
@@ -44,157 +63,187 @@ conda activate emb_attack_separa
 pip install -r requirements.txt
 ```
 
-### 2. 基本使用
-
-#### 嵌入水印
+### 2. 基础测试（推荐先运行）
 
 ```bash
-python main.py --mode embed \
-    --model_name google/switch-base-8 \
-    --prompt "Your text here" \
-    --secret_key "my_secret_key_123"
+cd experiment
+python test_okr_basic.py
 ```
 
-#### 检测水印
+这会验证：
+- 所有模块能否正常导入
+- 配置是否正确
+- OKRRouter 核心逻辑是否正常
+- 设备（GPU/CPU）状态
+
+### 3. 运行完整实验
 
 ```bash
-python main.py --mode detect \
-    --model_name google/switch-base-8 \
-    --text_to_check "生成的完整文本" \
-    --secret_key "my_secret_key_123"
+cd experiment
+python run_okr_experiment.py
 ```
 
-**⚠️ 重要**：检测时必须使用与嵌入时**相同的 `secret_key`**！
+这会运行完整的 OKR 基础实验，包括：
+- 加载模型（google/switch-base-8）
+- 注入 OKR 水印
+- 生成带水印的文本
+- 检测水印
+- 保存结果到 `./okr_results/`
 
-## 📖 使用手册
-
-### 模式说明
-
-项目支持以下四种模式：
-
-#### 1. `embed` - 嵌入水印
-
-在文本生成过程中嵌入水印。
-
-**必需参数**：
-- `--model_name`: 模型名称（如 `google/switch-base-8`）
-- `--prompt`: 输入提示文本
-- `--secret_key`: 水印密钥（用于生成确定性种子）
-
-**可选参数**：
-- `--c_star`: 安全系数 c*（默认 2.0）
-- `--gamma_design`: 设计攻击强度 γ（默认 0.03）
-
-**示例**：
-```bash
-python main.py --mode embed \
-    --model_name google/switch-base-8 \
-    --prompt "The quick brown fox" \
-    --secret_key "my_key_123"
-```
-
-**输出**：生成的带水印文本
-
-#### 2. `detect` - 检测水印
-
-检测文本是否包含水印。
-
-**必需参数**：
-- `--model_name`: 模型名称
-- `--text_to_check`: 待检测的文本
-- `--secret_key`: 水印密钥（**必须与嵌入时相同**）
-
-**可选参数**：
-- `--c_star`: 安全系数（默认 2.0，应与嵌入时相同）
-- `--gamma_design`: 设计攻击强度（默认 0.03，应与嵌入时相同）
-- `--tau_alpha`: LLR 检测阈值（默认 5.0，建议通过标定获得）
-
-**示例**：
-```bash
-python main.py --mode detect \
-    --model_name google/switch-base-8 \
-    --text_to_check "生成的完整文本" \
-    --secret_key "my_key_123" \
-    --tau_alpha 8.0
-```
-
-**输出**：
-```
---- Detection Result ---
-Result: Watermark DETECTED (Score: 25.34)
-------------------------
-```
-
-#### 3. `calibrate` - 参数标定
-
-标定水印系统的参数（Lg、C、c*）。
-
-**参数**：
-- `--model_name`: 模型名称
-- `--dataset_name`: 数据集名称（如 `wikitext`）
-- `--num_calib_samples`: 标定样本数量（默认 100）
-
-**示例**：
-```bash
-python main.py --mode calibrate \
-    --model_name google/switch-base-8 \
-    --dataset_name wikitext \
-    --num_calib_samples 100
-```
-
-#### 4. `experiment` - 完整实验
-
-运行完整的实验流程。
-
-**参数**：与 `calibrate` 模式类似
-
-### 完整工作流程示例
+### 4. 使用示例代码
 
 ```bash
-# 步骤 1: 嵌入水印
-python main.py --mode embed \
-    --model_name google/switch-base-8 \
-    --prompt "The quick brown fox jumps over the lazy dog" \
-    --secret_key "my_key_123"
-
-# 输出示例：
-# --- Watermarked Output ---
-# The quick brown fox jumps over the lazy dog. It is a beautiful day.
-# --------------------------
-
-# 步骤 2: 检测水印（使用生成的文本和相同的 secret_key）
-python main.py --mode detect \
-    --model_name google/switch-base-8 \
-    --text_to_check "The quick brown fox jumps over the lazy dog. It is a beautiful day." \
-    --secret_key "my_key_123"
-
-# 输出示例：
-# --- Detection Result ---
-# Result: Watermark DETECTED (Score: 25.34)
-# ------------------------
+cd experiment
+python okr_example.py
 ```
 
-### 参数说明
+## 📖 基本使用
 
-#### 核心参数
+### 基本使用示例
 
-| 参数 | 说明 | 默认值 | 必需 |
-|------|------|--------|------|
-| `--mode` | 运行模式 | - | ✅ |
-| `--model_name` | 模型名称 | - | ✅ |
-| `--secret_key` | 水印密钥 | `DEFAULT_SECRET_KEY` | ⚠️ 检测时必需 |
-| `--prompt` | 输入提示（embed模式） | - | embed模式必需 |
-| `--text_to_check` | 待检测文本（detect模式） | - | detect模式必需 |
+```python
+from okr_patch import inject_okr
+from okr_detector import OKRDetector
+from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
 
-#### 水印参数
+# 加载模型
+model = AutoModelForSeq2SeqLM.from_pretrained("google/switch-base-8")
+tokenizer = AutoTokenizer.from_pretrained("google/switch-base-8")
 
-| 参数 | 说明 | 默认值 | 说明 |
-|------|------|--------|------|
-| `--c_star` | 安全系数 c* | 2.0 | 影响水印强度 ε = c*² × γ |
-| `--gamma_design` | 设计攻击强度 γ | 0.03 | 影响水印强度 |
-| `--tau_alpha` | LLR 检测阈值 | 5.0 | 应通过H0假设下的实验标定 |
+# 注入水印
+model = inject_okr(model, epsilon=1.5, secret_key="my_secret_key")
 
-**注意**：检测时的 `c_star` 和 `gamma_design` 应该与嵌入时相同。
+# 生成文本
+text = "The quick brown fox jumps over the lazy dog."
+inputs = tokenizer(text, return_tensors="pt")
+outputs = model.generate(**inputs, max_length=100)
+
+# 检测水印
+detector = OKRDetector(model, epsilon=1.5)
+score, verdict = detector.detect(inputs["input_ids"])
+print(f"检测结果: {verdict}, 得分: {score:.4f}")
+```
+
+### 使用配置
+
+```python
+from okr_config import get_default_okr_config
+from okr_patch import inject_okr
+
+# 创建配置
+config = get_default_okr_config()
+config.watermark.epsilon = 1.5
+config.watermark.secret_key = "OKR_SECRET_KEY"
+
+# 注入水印
+model = inject_okr(
+    model,
+    epsilon=config.watermark.epsilon,
+    secret_key=config.watermark.secret_key
+)
+```
+
+### 运行完整实验
+
+```python
+from okr_experiment import run_okr_experiment
+from okr_config import get_quick_test_okr_config
+
+# 使用快速测试配置
+config = get_quick_test_okr_config()
+config.watermark.epsilon = 1.5
+config.watermark.secret_key = "EXPERIMENT_KEY"
+
+# 运行基础实验
+results = run_okr_experiment(config, experiment_type="basic")
+print(f"平均命中率: {results['summary']['average_hit_rate']:.4f}")
+```
+
+## ⚙️ 配置说明
+
+### OKRConfig
+
+主要配置项：
+
+- **model**: 模型配置
+  - `model_name`: 模型名称（默认: "google/switch-base-8"）
+  - `device`: 计算设备（默认: "auto"）
+  - `torch_dtype`: 数据类型（默认: "float32"）
+
+- **watermark**: 水印配置
+  - `secret_key`: 私钥（用于初始化 secret_projection）
+  - `epsilon`: 质量容忍阈值（Logit 差值，默认: 1.5）
+  - `num_experts`: 专家数量（默认: 8）
+  - `top_k`: Top-k 激活数（默认: 1）
+
+- **detection**: 检测配置
+  - `hit_rate_threshold`: 命中率阈值（默认: 0.8）
+  - `min_opportunities`: 最小机会窗口数（默认: 10）
+
+- **experiment**: 实验配置
+  - `experiment_name`: 实验名称
+  - `output_dir`: 输出目录（默认: "./okr_results"）
+  - `num_samples`: 样本数（默认: 100）
+  - `batch_size`: 批次大小（默认: 4）
+
+## 🔬 算法原理
+
+### 核心思想
+
+1. **语义锚点 (Semantic Anchors)**
+   - 使用 LSH（局部敏感哈希）将水印打在 Embedding 上
+   - 语义相似的文本会产生相似的投影结果
+   - 抗释义攻击
+
+2. **机会主义路由 (Opportunistic Routing)**
+   - 只在安全区域内修改路由
+   - 安全区域定义：`max_logit - current_logit < epsilon`
+   - 保证输出质量不受影响
+
+### 实现细节
+
+```python
+# 1. 计算水印信号（LSH 投影）
+watermark_bias = torch.matmul(hidden_states, secret_projection)
+
+# 2. 计算安全掩码
+max_logits, _ = raw_logits.max(dim=-1, keepdim=True)
+safe_mask = raw_logits >= (max_logits - epsilon)
+
+# 3. 机会主义注入
+final_scores = torch.where(
+    safe_mask,
+    watermark_bias,  # 在安全区内，听水印的
+    -1e9              # 在安全区外，直接淘汰
+)
+
+# 4. 路由选择
+selected_experts = torch.argmax(final_scores, dim=-1)
+```
+
+## 📊 实验类型
+
+### 1. 基础实验 (OKRBasicExperiment)
+
+验证水印注入和检测的基本功能：
+- 生成带水印的文本
+- 检测水印命中率
+- 统计检测结果
+
+### 2. 鲁棒性实验 (OKRRobustnessExperiment)
+
+测试水印在释义攻击下的表现：
+- 生成带水印的文本
+- 进行释义攻击
+- 检测攻击后的水印
+
+## 📝 输出文件
+
+实验完成后，会在 `./okr_results/` 目录下生成：
+
+- `experiment.log` - 实验日志
+- `results.json` - 实验结果（基础实验）
+- `robustness_results.json` - 鲁棒性实验结果（如果运行）
 
 ## 🔧 环境配置
 
@@ -222,139 +271,62 @@ cd experiment
 pip install -r requirements.txt
 ```
 
-### WSL 环境
-
-如果使用 WSL (Windows Subsystem for Linux)，项目会自动检测环境并使用相应的缓存配置。
-
-**快速测试**：
-```bash
-python experiment/test_wsl_setup.py
-```
-
-详细说明请参考：[`experiment/WSL_TEST_GUIDE.md`](experiment/WSL_TEST_GUIDE.md)
-
-### 缓存配置
-
-项目会自动检测运行环境（Windows/WSL/Linux）并设置相应的缓存路径：
-
-- **Windows**: `D:/Dev/cache/`
-- **WSL/Linux**: `~/.cache/emb_attack_separa/`
-
-## 📚 理论文档
-
-### 论文编译
-
-#### 推荐方法：使用 latexmk
-
-```bash
-# 编译中文版（使用 XeLaTeX）
-latexmk -xelatex moe_paradigm_rigorous_proofs.tex
-
-# 编译英文版（使用 pdfLaTeX）
-latexmk -pdf moe_watermark_paraphrase_attack.tex
-```
-
-#### 手动编译
-
-```bash
-# 中文版
-xelatex moe_paradigm_rigorous_proofs.tex
-xelatex moe_paradigm_rigorous_proofs.tex  # 第二次编译以生成正确的引用
-
-# 英文版
-pdflatex moe_watermark_paraphrase_attack.tex
-pdflatex moe_watermark_paraphrase_attack.tex
-```
-
-### 技术文档
-
-- **阈值标定理论**: [`experiment/THRESHOLD_EXPLANATION.md`](experiment/THRESHOLD_EXPLANATION.md) - LLR 阈值 τ_α 的理论依据和标定方法
-- **检测详细说明**: [`experiment/DETECTION_GUIDE.md`](experiment/DETECTION_GUIDE.md) - 水印检测的详细说明和常见问题
-
 ## ❓ 常见问题
 
-### Q1: 为什么检测不到水印？
+### Q1: 内存不足
 
-**可能原因**：
+如果 GPU 内存不足，可以：
+- 使用 FP16: `config.model.torch_dtype = "float16"`
+- 限制内存: `config.model.max_memory = {0: "5GB"}`
+- 使用 CPU: `config.model.device = "cpu"`（会很慢）
+
+### Q2: 模型下载慢
+
+已自动配置使用 Hugging Face 镜像源 (`https://hf-mirror.com`)
+
+### Q3: 导入错误
+
+确保在 `experiment/` 目录下运行，或添加路径：
+
+```python
+import sys
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).parent))
+```
+
+### Q4: 检测不到水印
+
+可能原因：
 1. **`secret_key` 不匹配**（最常见）
    - 确保检测时使用与嵌入时相同的 `secret_key`
 2. **检测的文本不正确**
    - 应使用嵌入时生成的**完整文本**，而不是原始提示
 3. **阈值设置过高**
-   - 尝试降低 `--tau_alpha` 值，或使用标定模式获得合适的阈值
-4. **文本经过攻击**
-   - 如果文本被改写或攻击，水印可能被破坏
+   - 尝试调整 `hit_rate_threshold` 值
 
-### Q2: 如何选择合适的阈值？
+## 📚 参考文档
 
-**推荐方法**：使用标定模式
+- [`experiment/OKR_README.md`](experiment/OKR_README.md) - 详细使用文档
+- [`experiment/START_OKR_EXPERIMENT.md`](experiment/START_OKR_EXPERIMENT.md) - 快速开始指南
+- [`okr/Opportunistic Keyed Routing V2.1.md`](okr/Opportunistic%20Keyed%20Routing%20V2.1.md) - 算法详细说明
+- [`okr/水印算法深度分析-数学原理.md`](okr/水印算法深度分析-数学原理.md) - 数学原理分析
 
-```bash
-# 准备无水印样本，然后标定阈值
-python main.py --mode calibrate \
-    --model_name google/switch-base-8 \
-    --num_calib_samples 100 \
-    --secret_key "my_key_123"
-```
+## 📄 注意事项
 
-**临时方法**：根据实际LLR分数调整
+1. **模型兼容性**
+   - 当前主要支持 Switch Transformers（google/switch-base-8）
+   - 理论上支持任何 MoE 模型，但需要调整路由层名称
 
-如果检测时LLR分数为 8.28，可以设置：
-```bash
---tau_alpha 8.0  # 略低于LLR分数
-```
+2. **性能优化**
+   - 使用 FP16/BF16 可以显著减少内存占用
+   - 建议设置 `max_memory` 限制 GPU 内存使用
 
-详细理论说明请参考：[`experiment/THRESHOLD_EXPLANATION.md`](experiment/THRESHOLD_EXPLANATION.md)
+3. **配置验证**
+   - 配置会自动验证，确保参数有效性
+   - 如果验证失败，会抛出 `ValueError`
 
-### Q3: 检测时可以使用不同的参数吗？
-
-**不建议**。检测时应该使用与嵌入时相同的参数：
-- `--secret_key`: **必须相同**
-- `--c_star`: 应该相同
-- `--gamma_design`: 应该相同
-
-只有 `--tau_alpha` 可以根据需要调整。
-
-### Q4: WSL 环境下如何配置？
-
-项目会自动检测WSL环境并使用Linux路径。详细说明请参考：
-- [`experiment/WSL_TEST_GUIDE.md`](experiment/WSL_TEST_GUIDE.md)
-
-### Q5: 模型下载失败怎么办？
-
-1. 检查网络连接
-2. 确认镜像源配置（项目默认使用 `https://hf-mirror.com`）
-3. 手动设置环境变量：
-   ```bash
-   export HF_ENDPOINT=https://hf-mirror.com
-   ```
-
-## 📝 注意事项
-
-1. **`secret_key` 必须匹配**：这是最重要的！嵌入和检测必须使用相同的密钥
-2. **检测完整文本**：使用嵌入时生成的完整文本，而不是原始提示
-3. **参数一致性**：检测时的 `c_star` 和 `gamma_design` 应该与嵌入时相同
-4. **阈值标定**：建议通过H0假设下的实验标定阈值，而不是随意设置
-5. **模型版本**：确保使用相同的模型版本
-
-## 🔬 论文文件
-
-### 核心论文
-- **`moe_paradigm_rigorous_proofs.tex`** - 范式之争的严格数学证明（中文版，USENIX SOUPS 格式）
-
-### 其他版本
-- `moe_paradigm_rigorous_proofs_soups.tex` - SOUPS 格式版本
-- `moe_watermark_paraphrase_attack.tex` - 英文版论文
-- `moe_watermark_paraphrase_attack_zh.tex` - 中文版论文
-
-## 📄 依赖要求
-
-### LaTeX 发行版
-- TeX Live 2020 或更高版本（推荐）
-- MiKTeX 2.9 或更高版本
-
-### Python 依赖
-见 `experiment/requirements.txt`
+4. **`secret_key` 必须匹配**
+   - 嵌入和检测必须使用相同的密钥
 
 ## 🤝 贡献
 
