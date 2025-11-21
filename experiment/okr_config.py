@@ -74,6 +74,7 @@ class OKRExperimentConfig:
     batch_size: int = 4
     max_length: int = 512
     seed: int = 42  # 随机种子
+    repetition_penalty: float = 1.2  # 重复惩罚系数（Linus 建议：防止重复循环）
     
     # 数据集配置
     dataset_name: Optional[str] = None

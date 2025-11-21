@@ -37,6 +37,7 @@
       "batch_size": 2,
       "max_length": 128,
       "seed": 42,
+      "repetition_penalty": 1.2,
       "dataset_name": null,
       "dataset_split": null,
       "custom_prompts": [
@@ -49,7 +50,7 @@
   "summary": {
     "total_samples": 3,
     "watermarked_samples": 3,
-    "average_hit_rate": 0.3561786115169525,
+    "average_hit_rate": 0.30883241693178815,
     "detection_threshold": 0.8
   },
   "detailed_results": [
@@ -63,15 +64,15 @@
     {
       "sample_id": 1,
       "original_text": "In a world where technology advances rapidly, artificial intelligence plays a crucial role.",
-      "watermarked_text": ". Artificial intelligence is the technology that helps us to make decisions. Artificial intelligence",
-      "hit_rate": 0.3333333432674408,
+      "watermarked_text": ". Artificial intelligence is the technology that helps us to make decisions. It is also known as art",
+      "hit_rate": 0.2568807303905487,
       "verdict": "Watermarked"
     },
     {
       "sample_id": 2,
       "original_text": "Climate change is one of the most pressing issues facing humanity today.",
       "watermarked_text": ". a global crisis. Climate change is a global crisis... Climate change is a global crisis.... Climat",
-      "hit_rate": 0.40186914801597595,
+      "hit_rate": 0.3362831771373749,
       "verdict": "Watermarked"
     }
   ]

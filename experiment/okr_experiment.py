@@ -282,13 +282,17 @@ class OKRBasicExperiment(OKRExperimentFramework):
                 if is_decoder_only:
                     # decoder-only 模型（如 DeepSeek-MoE）
                     # 添加 use_cache=False 以避免 DynamicCache.get_usable_length 兼容性问题
+                    # 根据 Linus 审查建议：添加 repetition_penalty
+                    repetition_penalty = getattr(self.config.experiment, 'repetition_penalty', 1.2)
+                    
                     outputs = watermarked_model.generate(
                         **inputs,
                         max_length=self.config.experiment.max_length,
                         num_beams=1,
                         do_sample=False,
                         use_cache=False,  # 禁用 cache 以避免兼容性问题
-                        pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id
+                        pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
+                        repetition_penalty=repetition_penalty  # 防止重复循环
                     )
                     # decoder-only 模型：outputs[0] 包含完整序列（输入+生成）
                     # 需要提取新生成的部分
@@ -313,6 +317,10 @@ class OKRBasicExperiment(OKRExperimentFramework):
                     # 关键修复：只使用 max_new_tokens，避免与 max_length 冲突
                     # 对于 encoder-decoder 模型，使用 max_new_tokens 更合适
                     try:
+                        # 根据 Linus 审查建议：添加 repetition_penalty 防止重复循环
+                        # 对于脆弱的 Switch Transformer，这能显著改善生成质量
+                        repetition_penalty = getattr(self.config.experiment, 'repetition_penalty', 1.2)
+                        
                         outputs = watermarked_model.generate(
                             **inputs,
                             max_new_tokens=max_new_tokens,  # 只使用 max_new_tokens，避免冲突
@@ -321,7 +329,8 @@ class OKRBasicExperiment(OKRExperimentFramework):
                             use_cache=False,  # 禁用 cache 以避免兼容性问题
                             decoder_start_token_id=decoder_start_token_id,
                             eos_token_id=eos_token_id,  # 明确设置 eos_token_id 以正确停止生成
-                            pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id
+                            pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id,
+                            repetition_penalty=repetition_penalty  # 防止重复循环（Linus 建议）
                         )
                     except Exception as e:
                         logger.warning(f"生成时出错: {e}，尝试使用 max_length 参数")
