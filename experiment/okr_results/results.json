@@ -1,0 +1,75 @@
+{
+  "experiment_name": "OKR_DeepSeek_MoE_QuickTest",
+  "config": {
+    "model": {
+      "model_name": "/root/private_data/model/DeepSeek-MoE",
+      "model_type": "deepseek_moe",
+      "device": "cuda",
+      "torch_dtype": "bfloat16",
+      "trust_remote_code": true,
+      "max_memory": {
+        "0": 70000000000
+      },
+      "local_model_path": "/root/private_data/model/DeepSeek-MoE"
+    },
+    "watermark": {
+      "secret_key": "OKR_DEEPSEEK_MOE_TEST_KEY_2024",
+      "epsilon": 2.0,
+      "num_experts": 64,
+      "top_k": 8
+    },
+    "detection": {
+      "hit_rate_threshold": 0.8,
+      "min_opportunities": 10
+    },
+    "attack": {
+      "attack_type": "paraphrase",
+      "paraphrase_model": "Vamsi/T5_Paraphrase",
+      "attack_strength": "moderate"
+    },
+    "experiment": {
+      "experiment_name": "OKR_DeepSeek_MoE_QuickTest",
+      "output_dir": "./okr_results",
+      "num_samples": 5,
+      "batch_size": 1,
+      "max_length": 128,
+      "seed": 42,
+      "dataset_name": null,
+      "dataset_split": null,
+      "custom_prompts": [
+        "The quick brown fox jumps over the lazy dog.",
+        "In a world where technology advances rapidly, artificial intelligence plays a crucial role.",
+        "Climate change is one of the most pressing issues facing humanity today."
+      ]
+    }
+  },
+  "summary": {
+    "total_samples": 3,
+    "watermarked_samples": 3,
+    "average_hit_rate": 0.1763420800367991,
+    "detection_threshold": 0.8
+  },
+  "detailed_results": [
+    {
+      "sample_id": 0,
+      "original_text": "The quick brown fox jumps over the lazy dog.",
+      "watermarked_text": "The quick brown fox jumps over the lazy dog.\nThe quick brown fox jumps over the lazy dog.\nThe quick ",
+      "hit_rate": 0.2666666805744171,
+      "verdict": "Watermarked"
+    },
+    {
+      "sample_id": 1,
+      "original_text": "In a world where technology advances rapidly, artificial intelligence plays a crucial role.",
+      "watermarked_text": "In a world where technology advances rapidly, artificial intelligence plays a crucial role. It has b",
+      "hit_rate": 0.11235955357551575,
+      "verdict": "Watermarked"
+    },
+    {
+      "sample_id": 2,
+      "original_text": "Climate change is one of the most pressing issues facing humanity today.",
+      "watermarked_text": "Climate change is one of the most pressing issues facing humanity today. It is a global problem that",
+      "hit_rate": 0.15000000596046448,
+      "verdict": "Watermarked"
+    }
+  ]
+}

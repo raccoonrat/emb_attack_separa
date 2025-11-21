@@ -392,13 +392,24 @@ class OKRBasicExperiment(OKRExperimentFramework):
             
             logger.info(f"样本 {i}: generated_seq长度={generated_seq.shape[0]}, decoder_input_ids长度={decoder_input_ids.shape[1]}, 路由数据长度={routing_data_len}, watermarked_text长度={len(watermarked_text)}")
             
-            # 检测器会自动处理 encoder-decoder 模型
-            # 传入 decoder_input_ids 以便使用生成时的token序列
-            score, verdict = detector.detect(
-                input_ids=encoder_inputs["input_ids"],
-                attention_mask=encoder_inputs.get("attention_mask"),
-                decoder_input_ids=decoder_input_ids  # 使用生成的完整文本重新tokenize后的序列
-            )
+            # 检测器会自动处理 encoder-decoder 模型和 decoder-only 模型
+            # 对于 decoder-only 模型，使用 decoder_input_ids 作为 input_ids
+            # 对于 encoder-decoder 模型，传入 decoder_input_ids 以便使用生成时的token序列
+            is_decoder_only = not hasattr(watermarked_model, 'encoder') or watermarked_model.encoder is None
+            if is_decoder_only:
+                # decoder-only 模型：使用 decoder_input_ids 作为 input_ids
+                score, verdict = detector.detect(
+                    input_ids=decoder_input_ids,
+                    attention_mask=None,  # decoder-only 模型可能不需要 attention_mask
+                    decoder_input_ids=None
+                )
+            else:
+                # encoder-decoder 模型：传入 decoder_input_ids
+                score, verdict = detector.detect(
+                    input_ids=encoder_inputs["input_ids"],
+                    attention_mask=encoder_inputs.get("attention_mask"),
+                    decoder_input_ids=decoder_input_ids  # 使用生成的完整文本重新tokenize后的序列
+                )
             detection_results.append({
                 "sample_id": i,
                 "original_text": original_text[:100],  # 截断显示

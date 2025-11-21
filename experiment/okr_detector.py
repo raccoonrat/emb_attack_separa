@@ -171,7 +171,8 @@ class OKRDetector:
                     input_ids=input_ids,
                     attention_mask=attention_mask,
                     decoder_input_ids=decoder_input_ids,
-                    output_hidden_states=True
+                    output_hidden_states=True,
+                    use_cache=False  # 禁用 cache 以避免 DynamicCache.get_usable_length 兼容性问题
                 )
             
             # 恢复之前保存的路由数据（使用生成时保存的数据，而不是检测时重新运行模型时产生的数据）
@@ -209,7 +210,12 @@ class OKRDetector:
         else:
             # 对于 decoder-only 模型（如 GPT）
             with torch.no_grad():
-                outputs = self.model(input_ids=input_ids, attention_mask=attention_mask, output_hidden_states=True)
+                outputs = self.model(
+                    input_ids=input_ids, 
+                    attention_mask=attention_mask, 
+                    output_hidden_states=True,
+                    use_cache=False  # 禁用 cache 以避免 DynamicCache.get_usable_length 兼容性问题
+                )
                 hidden_states = outputs.hidden_states[-1]
             
             # 获取实际选择的专家
@@ -217,6 +223,17 @@ class OKRDetector:
             
             if actual_selected_experts is None:
                 return 0.0, "No routing data available"
+            
+            # 确保 hidden_states 和 actual_selected_experts 的长度匹配
+            if hidden_states.shape[1] != actual_selected_experts.shape[1]:
+                # 调整形状以匹配（取较小的长度）
+                min_seq_len = min(hidden_states.shape[1], actual_selected_experts.shape[1])
+                hidden_states = hidden_states[:, :min_seq_len, :]
+                actual_selected_experts = actual_selected_experts[:, :min_seq_len, :]
+                import logging
+                diff = abs(hidden_states.shape[1] - actual_selected_experts.shape[1])
+                if diff > 0:
+                    logging.getLogger("okr_detector").warning(f"decoder-only: hidden_states长度({hidden_states.shape[1]})与selected_experts长度({actual_selected_experts.shape[1]})不匹配，差值={diff}，已截断到{min_seq_len}")
         
         return self.verify_batch(hidden_states, actual_selected_experts)
 
