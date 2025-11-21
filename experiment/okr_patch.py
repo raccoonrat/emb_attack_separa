@@ -221,7 +221,14 @@ def _inject_single_layer(original_router: nn.Module,
     if secret_key:
         _initialize_secret_projection(okr_router, secret_key)
 
-    # 5. 挂载并替换 Forward (The Hook)
+    # 5. 检测模型类型以确定返回格式 (Detect model type for return format)
+    # OLMoE 期望只返回 router_logits (tensor)
+    # Switch Transformers 期望返回 (router_mask, router_probs, router_logits) (tuple)
+    model_type_name = type(model_ref).__name__.lower()
+    is_olmoe = 'olmoe' in model_type_name
+    original_router._okr_return_format = 'tensor' if is_olmoe else 'tuple'
+    
+    # 6. 挂载并替换 Forward (The Hook)
     original_router._okr_router = okr_router
     
     # 关键：创建闭包时，要捕获当前的 original_router 和 okr_router
@@ -235,7 +242,9 @@ def _create_proxy_forward(original_router: nn.Module, okr_router: OKRRouter):
     职责：
     1. 调用 Kernel 计算路由。
     2. 处理副作用（记录路由选择）。
-    3. 严格返回 Tuple 格式。
+    3. 根据模型类型返回适当格式：
+       - OLMoE: 返回 router_logits (tensor)
+       - Switch Transformers: 返回 (router_mask, router_probs, router_logits) (tuple)
     """
     def forward(hidden_states: torch.Tensor):
         # 1. Kernel 计算
@@ -251,7 +260,11 @@ def _create_proxy_forward(original_router: nn.Module, okr_router: OKRRouter):
             original_router._okr_all_selected_experts = []
             
         # 区分生成模式 (Accumulate) 和 检测模式 (Overwrite/Batch)
-        batch_size, seq_len, _ = hidden_states.shape
+        # 处理可能的 2D 或 3D 输入
+        if len(hidden_states.shape) == 2:
+            batch_size, seq_len = 1, hidden_states.shape[0]
+        else:
+            batch_size, seq_len = hidden_states.shape[0], hidden_states.shape[1]
         
         if seq_len == 1:
             # 生成模式：逐个 Token 累积
@@ -278,8 +291,35 @@ def _create_proxy_forward(original_router: nn.Module, okr_router: OKRRouter):
                     selected_experts[:, t:t+1, :].detach().cpu()
                 )
 
-        # 3. 返回结果 (Strict Contract)
-        return (router_mask, router_probs, router_logits)
+        # 3. 返回结果 (Adaptive Return Format)
+        # OLMoE 期望只返回 router_logits (tensor)，且可能是 2D 格式
+        # Switch Transformers 期望返回 tuple (router_mask, router_probs, router_logits)
+        return_format = getattr(original_router, '_okr_return_format', 'tuple')
+        
+        if return_format == 'tensor':
+            # OLMoE 格式：只返回 router_logits (dense logits)
+            # OLMoE 期望 dense logits，不是 sparse logits
+            if hasattr(okr_router, '_last_final_logits'):
+                final_logits = okr_router._last_final_logits
+                # OLMoE 可能期望 2D 格式 [batch*seq, num_experts]
+                # 如果输入是 2D，输出也应该是 2D
+                if len(hidden_states.shape) == 2:
+                    # 输入是 2D，输出也应该是 2D
+                    # final_logits 现在是 [1, seq_len, num_experts]，需要 reshape 为 [seq_len, num_experts]
+                    final_logits = final_logits.squeeze(0)  # [seq_len, num_experts]
+                return final_logits
+            else:
+                # Fallback: 从 router_logits 重建 dense logits
+                # 但这不太准确，因为 router_logits 是 sparse 的
+                dense_logits = router_logits.clone()
+                dense_logits[dense_logits == float('-inf')] = -1e9
+                # 处理形状
+                if len(hidden_states.shape) == 2:
+                    dense_logits = dense_logits.squeeze(0)
+                return dense_logits
+        else:
+            # Switch Transformers 格式：返回 tuple
+            return (router_mask, router_probs, router_logits)
         
     return forward
 
@@ -292,16 +332,45 @@ def _initialize_secret_projection(router: OKRRouter, key: str):
     # 使用 SHA256 生成 64位 Seed
     seed = int(hashlib.sha256(key.encode()).hexdigest()[:16], 16)
     
+    # 关键修复：处理 META 设备（Accelerate 延迟加载）
+    # META 设备不能创建 Generator，需要找到实际的设备
+    target_device = router.secret_projection.device
+    
+    # 如果设备是 META，尝试从其他参数获取实际设备
+    if target_device.type == "meta":
+        # 尝试从 gate_network 获取实际设备
+        if hasattr(router, 'gate_network') and router.gate_network.weight.device.type != "meta":
+            target_device = router.gate_network.weight.device
+        else:
+            # 如果都找不到，使用 CPU（Generator 可以在 CPU 上创建）
+            target_device = torch.device("cpu")
+            print(f"   警告: secret_projection 在 META 设备上，使用 CPU 初始化 Generator")
+    
     # 必须使用本地 Generator，避免影响全局随机状态
-    gen = torch.Generator(device=router.secret_projection.device)
+    # Generator 必须在 CPU 或 CUDA 上，不能在 META 上
+    gen = torch.Generator(device=target_device)
     gen.manual_seed(seed)
     
     with torch.no_grad():
         # 使用正态分布初始化
-        router.secret_projection.normal_(generator=gen)
+        # 如果 secret_projection 在 META 设备上，需要先移动到实际设备
+        if router.secret_projection.device.type == "meta":
+            # 创建临时 tensor 在目标设备上
+            temp_projection = torch.randn(
+                router.secret_projection.shape,
+                generator=gen,
+                device=target_device,
+                dtype=router.secret_projection.dtype
+            )
+            # 将数据复制到 secret_projection（如果它已经移动到实际设备）
+            # 否则，secret_projection 会在第一次使用时自动移动到正确设备
+            router.secret_projection.data = temp_projection.to(router.secret_projection.device)
+        else:
+            # 正常情况：直接在目标设备上初始化
+            router.secret_projection.normal_(generator=gen)
         
     router._secret_initialized.fill_(True)
-    # print(f"    -> Secret Key initialized with seed {seed}")
+    # print(f"    -> Secret Key initialized with seed {seed}, device={target_device}")
 
 
 def _clear_stats(model: nn.Module):

@@ -42,11 +42,47 @@ class OKRRouter(nn.Module):
     def forward(self, hidden_states: torch.Tensor):
         """
         Args:
-            hidden_states: [batch_size, seq_len, input_dim]
+            hidden_states: [batch_size, seq_len, input_dim] or [batch_size * seq_len, input_dim]
         Returns:
             tuple(router_mask, router_probs, router_logits) -> 符合 Switch Transformers 规范
         """
-        # 0. 确保数据类型一致
+        # 0. 处理输入形状 (Handle input shape)
+        original_shape = hidden_states.shape
+        ndim = len(original_shape)
+        
+        # 保存原始形状信息以便后续恢复
+        if ndim == 2:
+            # 2D input: 可能是 [batch*seq, hidden_dim] 或 [batch, hidden_dim]
+            # 检查最后一个维度是否匹配 input_dim
+            if original_shape[-1] != self.input_dim:
+                raise ValueError(
+                    f"Unexpected 2D input shape {original_shape}. "
+                    f"Expected last dimension to be {self.input_dim}, got {original_shape[-1]}."
+                )
+            
+            # 这是 [N, input_dim] 格式
+            # 在生成模式下，通常是 [1, input_dim] (单个 token)
+            # 在 prefill 模式下，可能是 [seq_len, input_dim] (flattened)
+            # 我们假设这是 flattened 的，batch_size=1
+            batch_size = 1
+            seq_len = original_shape[0]
+            # 添加 batch 维度: [seq_len, input_dim] -> [1, seq_len, input_dim]
+            hidden_states = hidden_states.unsqueeze(0)
+        elif ndim == 3:
+            # 3D input: [batch_size, seq_len, input_dim] - 标准格式
+            if original_shape[-1] != self.input_dim:
+                raise ValueError(
+                    f"Unexpected 3D input shape {original_shape}. "
+                    f"Expected last dimension to be {self.input_dim}, got {original_shape[-1]}."
+                )
+            batch_size, seq_len = original_shape[0], original_shape[1]
+        else:
+            raise ValueError(
+                f"Unexpected input shape {original_shape} with {ndim} dimensions. "
+                f"Expected 2D [N, input_dim] or 3D [batch, seq, input_dim]."
+            )
+        
+        # 确保数据类型一致
         if hidden_states.dtype != self.gate_network.weight.dtype:
             hidden_states = hidden_states.to(self.gate_network.weight.dtype)
 
@@ -92,6 +128,9 @@ class OKRRouter(nn.Module):
         injection = torch.clamp(injection, -max_noise, max_noise)
         
         final_logits = raw_logits + injection
+        
+        # 保存 final_logits 供外部使用（OLMoE 需要 dense logits）
+        self._last_final_logits = final_logits
 
         # --- 以下是 Switch Transformers 必须的格式转换 ---
         
@@ -111,7 +150,7 @@ class OKRRouter(nn.Module):
 
         # 9. 构造 router_mask (One-Hot 风格)
         # [batch, seq, num_experts]
-        batch_size, seq_len, _ = hidden_states.shape
+        # batch_size 和 seq_len 已经在前面处理过了
         router_mask = torch.zeros(
             (batch_size, seq_len, self.num_experts),
             device=hidden_states.device,

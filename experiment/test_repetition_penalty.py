@@ -151,11 +151,65 @@ for rep_penalty in REPETITION_PENALTIES:
         )
     
     # 解码生成的文本
-    generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
+    # 对于 encoder-decoder 模型，outputs[0] 只包含 decoder 的输出序列
+    generated_token_ids = outputs[0]
+    
+    # 确保是 1D tensor
+    if len(generated_token_ids.shape) > 1:
+        generated_token_ids = generated_token_ids[0]
+    
+    # 诊断：显示原始 token IDs（前20个）
+    raw_token_ids = generated_token_ids.cpu().tolist()[:20]
+    print(f"   原始 token IDs (前20个): {raw_token_ids}")
+    
+    # 移除 decoder_start_token_id（如果存在）
+    decoder_start_token_id = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else tokenizer.eos_token_id
+    if generated_token_ids.shape[0] > 0 and generated_token_ids[0].item() == decoder_start_token_id:
+        generated_token_ids = generated_token_ids[1:]
+    
+    # 手动过滤特殊 token（包括 T5 的 extra_id tokens）
+    pad_token_id = tokenizer.pad_token_id
+    eos_token_id = tokenizer.eos_token_id
+    
+    # T5/Switch Transformers 的特殊 token ID 范围
+    # extra_id_0 通常是 32000, extra_id_1 是 32001, 等等
+    # 我们需要过滤掉这些
+    filtered_tokens = []
+    found_eos = False
+    
+    for token_id in generated_token_ids.cpu().tolist():
+        # 遇到 eos_token 就停止
+        if eos_token_id is not None and token_id == eos_token_id:
+            found_eos = True
+            break
+        # 跳过 pad_token
+        if pad_token_id is not None and token_id == pad_token_id:
+            continue
+        # 跳过 T5 的 extra_id tokens（通常是 32000+）
+        if token_id >= 32000 and token_id < 33000:  # T5 extra_id 范围
+            continue
+        filtered_tokens.append(token_id)
+    
+    # 解码过滤后的 tokens
+    if filtered_tokens:
+        generated_text = tokenizer.decode(filtered_tokens, skip_special_tokens=True)
+        if not generated_text.strip():
+            # 如果跳过特殊 token 后为空，尝试不过滤
+            generated_text = tokenizer.decode(filtered_tokens, skip_special_tokens=False)
+    else:
+        # 如果所有 token 都是特殊 token
+        generated_text = tokenizer.decode(generated_token_ids, skip_special_tokens=False)
+        print(f"   警告: 生成的 token 序列全是特殊 token，原始解码: {generated_text[:100]}")
     
     # 移除任务前缀（如果存在）
     if generated_text.startswith("generate: "):
         generated_text = generated_text[len("generate: "):]
+    
+    # 移除 T5 的特殊 token 文本（如果解码后仍然存在）
+    if "<extra_id_0>" in generated_text:
+        generated_text = generated_text.replace("<extra_id_0>", "").strip()
+    if "<extra_id_1>" in generated_text:
+        generated_text = generated_text.replace("<extra_id_1>", "").strip()
     
     # 计算重复度（简单的启发式：连续重复的token数）
     tokens = generated_text.split()
@@ -172,7 +226,10 @@ for rep_penalty in REPETITION_PENALTIES:
                 has_repetition = True
                 break
     else:
-        diversity = 0
+        # 如果文本为空，设置默认值
+        unique_tokens = 0
+        total_tokens = 0
+        diversity = 0.0
         has_repetition = False
     
     print(f"生成文本: {generated_text[:200]}...")

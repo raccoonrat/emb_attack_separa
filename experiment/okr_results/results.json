@@ -5,15 +5,13 @@
       "model_name": "google/switch-base-8",
       "model_type": "switch",
       "device": "auto",
-      "torch_dtype": "float16",
+      "torch_dtype": "float32",
       "trust_remote_code": false,
-      "max_memory": {
-        "0": 5000000000
-      },
+      "max_memory": null,
       "local_model_path": null
     },
     "watermark": {
-      "secret_key": "OKR_EXPERIMENT_KEY_2024",
+      "secret_key": "OKR_DEFAULT_SECRET_KEY",
       "epsilon": 1.5,
       "threshold_ratio": 0.9,
       "dead_zone_threshold": 0.01,
@@ -33,9 +31,9 @@
     "experiment": {
       "experiment_name": "OKR_Basic",
       "output_dir": "./okr_results",
-      "num_samples": 10,
-      "batch_size": 2,
-      "max_length": 128,
+      "num_samples": 100,
+      "batch_size": 4,
+      "max_length": 512,
       "seed": 42,
       "repetition_penalty": 1.2,
       "dataset_name": null,
@@ -49,31 +47,31 @@
   },
   "summary": {
     "total_samples": 3,
-    "watermarked_samples": 3,
-    "average_hit_rate": 0.30883241693178815,
+    "watermarked_samples": 0,
+    "average_hit_rate": 0.07777778307596843,
     "detection_threshold": 0.8
   },
   "detailed_results": [
     {
       "sample_id": 0,
       "original_text": "The quick brown fox jumps over the lazy dog.",
-      "watermarked_text": ". fox. The lazy dog.",
-      "hit_rate": 0.3333333432674408,
-      "verdict": "Watermarked"
+      "watermarked_text": "<extra_id_0>",
+      "hit_rate": 0.0,
+      "verdict": "Clean"
     },
     {
       "sample_id": 1,
       "original_text": "In a world where technology advances rapidly, artificial intelligence plays a crucial role.",
-      "watermarked_text": ". Artificial intelligence is the technology that helps us to make decisions. It is also known as art",
-      "hit_rate": 0.2568807303905487,
-      "verdict": "Watermarked"
+      "watermarked_text": ". The MIT Technology Review, December 2018: Artificial intelligence is the future of business. It is",
+      "hit_rate": 0.10000000894069672,
+      "verdict": "Clean"
     },
     {
       "sample_id": 2,
       "original_text": "Climate change is one of the most pressing issues facing humanity today.",
-      "watermarked_text": ". a global crisis. Climate change is a global crisis... Climate change is a global crisis.... Climat",
-      "hit_rate": 0.3362831771373749,
-      "verdict": "Watermarked"
+      "watermarked_text": ". Climate change is a global issue. ... Read More the",
+      "hit_rate": 0.13333334028720856,
+      "verdict": "Clean"
     }
   ]
 }
