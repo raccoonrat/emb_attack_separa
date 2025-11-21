@@ -14,15 +14,21 @@ from okr_kernel import OKRRouter
 
 def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM], 
                epsilon: float = 1.5,
-               secret_key: Optional[str] = None) -> Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM]:
+               secret_key: Optional[str] = None,
+               threshold_ratio: float = 0.9,
+               dead_zone_threshold: float = 0.01,
+               watermark_alpha: float = 0.1) -> Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM]:
     """
     把 OKR 注入到任何标准的 MoE 模型中 (如 Mixtral, Switch)。
     前提：你知道模型里 Router 层的名字。
     
     Args:
         model: 预训练的MoE模型
-        epsilon: 质量容忍阈值
-        secret_key: 可选的密钥（用于初始化secret_projection）
+        epsilon: 质量容忍阈值（已弃用，保留用于向后兼容）
+        secret_key: 可选的密钥（用于初始化secret_projection，必须提供以确保分布式一致性）
+        threshold_ratio: 概率比率阈值（默认0.9，即 p_top2 / p_top1 >= 0.9 时介入）
+        dead_zone_threshold: LSH死区阈值（默认0.01，abs(dot_product) < 此值时不介入）
+        watermark_alpha: 水印混合系数（默认0.1，raw_logits + alpha * watermark_bias）
         
     Returns:
         patched_model: 已注入OKR的模型
@@ -404,7 +410,16 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
             
             # 创建 OKR router（仅用于计算，不替换原对象）
             # 使用与 router 相同的 dtype
-            okr_router = OKRRouter(input_dim, num_experts, top_k=top_k, epsilon=epsilon)
+            # 注意：epsilon 参数保留用于向后兼容，但实际使用 threshold_ratio
+            okr_router = OKRRouter(
+                input_dim, 
+                num_experts, 
+                top_k=top_k, 
+                epsilon=epsilon,
+                threshold_ratio=threshold_ratio,
+                dead_zone_threshold=dead_zone_threshold,
+                watermark_alpha=watermark_alpha
+            )
             okr_router = okr_router.to(device=device, dtype=router_dtype)
             
             # 复制原始权重
@@ -467,9 +482,12 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
                 import traceback
                 traceback.print_exc()
             
-            # 初始化 secret_projection
+            # 初始化 secret_projection（必须初始化，确保分布式一致性）
             if secret_key is not None:
                 _initialize_secret_projection(okr_router, secret_key, input_dim, num_experts, device)
+            else:
+                # 如果没有提供 secret_key，使用默认密钥，但必须初始化
+                _initialize_secret_projection(okr_router, "OKR_DEFAULT_SECRET_KEY", input_dim, num_experts, device)
             
             # 将 OKR router 保存到 router 对象上，供检测器使用
             router._okr_router = okr_router
@@ -709,19 +727,38 @@ def _okr_forward_core(router: OKRRouter, hidden_states: torch.Tensor):
     
     watermark_bias = torch.matmul(hidden_states, router.secret_projection)
     
-    # 3. 计算安全掩码
-    max_logits, _ = raw_logits.max(dim=-1, keepdim=True)
-    safe_mask = raw_logits >= (max_logits - router.epsilon)
+    # 2.1 死区检查 (Dead Zone Check)
+    watermark_bias_abs = torch.abs(watermark_bias)
+    watermark_mask = watermark_bias_abs >= router.dead_zone_threshold
     
-    # 4. 机会主义注入
-    # 确保 watermark_bias 在正确的设备上
+    # 3. 计算安全掩码 (Indifference Zone) - 基于概率比率
+    raw_probs = F.softmax(raw_logits, dim=-1)
+    top2_probs, _ = torch.topk(raw_probs, k=min(2, router.num_experts), dim=-1)
+    top1_probs = top2_probs[:, :, 0:1]
+    top2_probs_values = top2_probs[:, :, 1:2] if top2_probs.size(-1) > 1 else top1_probs * 0
+    
+    prob_ratio = top2_probs_values / (top1_probs + 1e-9)
+    safe_mask = prob_ratio >= router.threshold_ratio
+    safe_mask = safe_mask.expand_as(raw_logits)
+    
+    # 4. 归一化 watermark_bias
+    raw_logits_std = torch.std(raw_logits, dim=-1, keepdim=True)
+    watermark_bias_std = torch.std(watermark_bias, dim=-1, keepdim=True)
+    scale_factor = raw_logits_std / (watermark_bias_std + 1e-9)
+    normalized_watermark_bias = watermark_bias * scale_factor
+    
+    # 5. 机会主义注入
     if watermark_bias.device != raw_logits.device:
         watermark_bias = watermark_bias.to(raw_logits.device)
+        normalized_watermark_bias = normalized_watermark_bias.to(raw_logits.device)
     
+    combined_mask = safe_mask & watermark_mask
+    modified_scores = raw_logits.clone()
+    watermark_contribution = router.watermark_alpha * normalized_watermark_bias
     modified_scores = torch.where(
-        safe_mask,
-        watermark_bias,
-        torch.tensor(-1e9, device=raw_logits.device, dtype=raw_logits.dtype)
+        combined_mask,
+        modified_scores + watermark_contribution,
+        modified_scores
     )
     
     # 5. 选取Top-K
@@ -743,7 +780,12 @@ def _initialize_secret_projection(router: OKRRouter, secret_key: str, input_dim:
     """
     使用密钥初始化secret_projection
     
-    这确保了相同密钥产生相同的投影矩阵
+    这确保了相同密钥产生相同的投影矩阵，解决分布式推理的一致性问题。
+    
+    关键修复：
+    1. 使用确定性随机数生成器（基于 secret_key）
+    2. 显式设置 seed，确保所有节点/进程生成相同的矩阵
+    3. 添加一致性检查标记
     
     Args:
         router: OKRRouter 实例
@@ -759,7 +801,11 @@ def _initialize_secret_projection(router: OKRRouter, secret_key: str, input_dim:
         device = router.secret_projection.device
     
     # 使用密钥生成确定性随机数
+    # 使用 SHA256 的前16个十六进制字符作为 seed（64位）
     seed = int(hashlib.sha256(secret_key.encode()).hexdigest()[:16], 16)
+    
+    # 创建确定性随机数生成器
+    # 关键：使用显式的 generator，确保所有节点/进程使用相同的 seed
     generator = torch.Generator(device=device)
     generator.manual_seed(seed)
     
@@ -770,6 +816,16 @@ def _initialize_secret_projection(router: OKRRouter, secret_key: str, input_dim:
             generator=generator,
             device=device,
             dtype=router.secret_projection.dtype
+        )
+    
+    # 标记为已初始化
+    router._secret_initialized.data = torch.tensor(True, device=device)
+    
+    # 一致性检查：验证生成的矩阵不为零（基本检查）
+    if torch.allclose(router.secret_projection, torch.zeros_like(router.secret_projection), atol=1e-6):
+        raise RuntimeError(
+            f"警告：secret_projection 初始化后全为零！这可能是随机数生成器的问题。"
+            f"seed={seed}, device={device}"
         )
 
 
@@ -875,6 +931,9 @@ def inject_okr_with_config(model: Union[AutoModelForCausalLM, AutoModelForSeq2Se
     return inject_okr(
         model, 
         epsilon=epsilon,
-        secret_key=secret_key
+        secret_key=secret_key,
+        threshold_ratio=getattr(wm_config, 'threshold_ratio', 0.9),
+        dead_zone_threshold=getattr(wm_config, 'dead_zone_threshold', 0.01),
+        watermark_alpha=getattr(wm_config, 'watermark_alpha', 0.1)
     )
 

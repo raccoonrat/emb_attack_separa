@@ -27,14 +27,23 @@ class OKRModelConfig:
 class OKRWatermarkConfig:
     """OKR 水印配置"""
     secret_key: str = "OKR_DEFAULT_SECRET_KEY"
-    epsilon: float = 1.5  # 质量容忍阈值（Logit 差值）
+    epsilon: float = 1.5  # 质量容忍阈值（Logit 差值，已弃用，保留用于向后兼容）
+    threshold_ratio: float = 0.9  # 概率比率阈值（p_top2 / p_top1 >= 此值时介入）
+    dead_zone_threshold: float = 0.01  # LSH死区阈值（abs(dot_product) < 此值时不介入）
+    watermark_alpha: float = 0.1  # 水印混合系数（raw_logits + alpha * watermark_bias）
     num_experts: int = 8  # 专家数量 K
     top_k: int = 1  # Top-k 激活数（Switch-base-8 默认是 1）
     
     def validate(self):
         """验证配置有效性"""
         if self.epsilon <= 0:
-            raise ValueError("epsilon 必须大于 0")
+            raise ValueError("epsilon 必须大于 0（虽然已弃用，但保留用于向后兼容）")
+        if not (0 < self.threshold_ratio <= 1.0):
+            raise ValueError("threshold_ratio 必须在 (0, 1] 之间")
+        if self.dead_zone_threshold < 0:
+            raise ValueError("dead_zone_threshold 必须大于等于 0")
+        if not (0 < self.watermark_alpha <= 1.0):
+            raise ValueError("watermark_alpha 必须在 (0, 1] 之间")
         if self.num_experts <= 0:
             raise ValueError("num_experts 必须大于 0")
         if self.top_k > self.num_experts:
