@@ -218,15 +218,46 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
         if router is None and hasattr(layer, 'mlp'):
             mlp_layer = layer.mlp
             # DeepSeek-MoE 可能将 MoE 放在 mlp 中
-            if hasattr(mlp_layer, 'experts') and hasattr(mlp_layer, 'gate'):
+            # 优先使用 gate（MoEGate），而不是 gate_proj（MLP投影层）
+            if hasattr(mlp_layer, 'gate'):
+                # 检查 gate 是否是真正的 MoE router（通常是 MoEGate 类型或权重形状为 [hidden_dim, num_experts]）
+                gate = mlp_layer.gate
+                # 检查是否是 MoEGate 类型或类似的 router
+                gate_type = type(gate).__name__
+                if 'Gate' in gate_type or 'Router' in gate_type:
+                    router = gate
+                    print(f"Layer {layer_idx}: 找到 router (方式6: mlp.gate, 类型: {gate_type})")
+                elif hasattr(gate, 'weight') and gate.weight is not None:
+                    # 检查权重形状：router 应该是 [hidden_dim, num_experts]
+                    # 例如 [2048, 64] 是合理的 router（64个专家）
+                    # 但 [10944, 2048] 不是 router，而是 MLP 投影层（intermediate_size -> hidden_size）
+                    weight_shape = gate.weight.shape
+                    if len(weight_shape) == 2:
+                        in_features, out_features = weight_shape
+                        # Router 的特征：out_features (num_experts) 通常远小于 in_features (hidden_dim)
+                        # 例如：hidden_dim=2048, num_experts=64，所以 [2048, 64] 是合理的
+                        # 但 MLP 投影层：intermediate_size=10944, hidden_dim=2048，所以 [10944, 2048] 不是 router
+                        # 判断标准：如果 out_features < in_features / 2，可能是 router
+                        if out_features < in_features / 2:
+                            router = gate
+                            print(f"Layer {layer_idx}: 找到 router (方式6: mlp.gate, 权重形状: {weight_shape})")
+                        else:
+                            print(f"Layer {layer_idx}: 跳过 mlp.gate（权重形状 {weight_shape} 不符合 router 特征，可能是 MLP 投影层）")
+                    else:
+                        # 非2D权重，可能是其他类型的 router，尝试使用
+                        router = gate
+                        print(f"Layer {layer_idx}: 找到 router (方式6: mlp.gate, 权重形状: {weight_shape})")
+                else:
+                    # 如果没有 weight，可能是其他类型的 router，尝试使用
+                    router = gate
+                    print(f"Layer {layer_idx}: 找到 router (方式6: mlp.gate, 无权重信息)")
+            if router is None and hasattr(mlp_layer, 'experts') and hasattr(mlp_layer, 'gate'):
                 router = mlp_layer.gate
                 print(f"Layer {layer_idx}: 找到 router (方式6: mlp.gate)")
-            elif hasattr(mlp_layer, 'router'):
+            if router is None and hasattr(mlp_layer, 'router'):
                 router = mlp_layer.router
                 print(f"Layer {layer_idx}: 找到 router (方式6: mlp.router)")
-            elif hasattr(mlp_layer, 'gate_proj'):  # 某些变体使用 gate_proj
-                router = mlp_layer.gate_proj
-                print(f"Layer {layer_idx}: 找到 router (方式6: mlp.gate_proj)")
+            # 不再使用 gate_proj，因为它是 MLP 投影层，不是 router
         
         # 方式7: DeepSeek-MoE 可能使用 layer.moe 或 layer.experts
         if router is None and hasattr(layer, 'moe'):
@@ -267,6 +298,10 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
             except:
                 router_dtype = torch.float32  # 默认
             
+            # 检查 router 类型
+            router_type_name = type(router).__name__
+            is_moe_gate = 'MoEGate' in router_type_name or 'Gate' in router_type_name
+            
             # 方式1: router.classifier (SwitchTransformersTop1Router 使用 classifier)
             if hasattr(router, 'classifier') and isinstance(router.classifier, torch.nn.Linear):
                 gate_layer = router.classifier
@@ -286,10 +321,42 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
             # 方式3: router 直接有 weight 参数
             elif hasattr(router, 'weight') and isinstance(router.weight, torch.nn.Parameter):
                 if len(router.weight.shape) >= 2:
-                    input_dim = router.weight.shape[0]
-                    num_experts_found = router.weight.shape[-1]
-                    router_dtype = router.weight.dtype
-                    print(f"  使用 router.weight: {input_dim} -> {num_experts_found}, dtype: {router_dtype}")
+                    weight_shape = router.weight.shape
+                    in_dim_candidate = weight_shape[0]
+                    out_dim_candidate = weight_shape[-1]
+                    
+                    # 对于 MoEGate，权重形状可能是 [num_experts, hidden_dim]（转置的）
+                    # 需要根据 router 类型和权重形状来判断
+                    if is_moe_gate:
+                        # MoEGate 的权重形状通常是 [num_experts, hidden_dim]
+                        # 例如：[64, 2048] 表示 64 个专家，hidden_dim=2048
+                        # 所以需要交换维度
+                        if out_dim_candidate > in_dim_candidate * 2:
+                            # 如果 out_dim 远大于 in_dim，可能是 [num_experts, hidden_dim]
+                            num_experts_found = in_dim_candidate
+                            input_dim = out_dim_candidate
+                            print(f"  MoEGate: 权重形状 {weight_shape} 解释为 [num_experts={num_experts_found}, hidden_dim={input_dim}]")
+                        else:
+                            # 否则可能是 [hidden_dim, num_experts]
+                            input_dim = in_dim_candidate
+                            num_experts_found = out_dim_candidate
+                            print(f"  MoEGate: 权重形状 {weight_shape} 解释为 [hidden_dim={input_dim}, num_experts={num_experts_found}]")
+                        router_dtype = router.weight.dtype
+                    else:
+                        # 非 MoEGate：验证权重形状
+                        # router 的权重形状应该是 [hidden_dim, num_experts]
+                        # 如果 num_experts > input_dim / 2，可能是 MLP 投影层而不是 router
+                        # 例如：[10944, 2048] 是 MLP 投影层（intermediate_size -> hidden_size），[2048, 64] 是 router
+                        if out_dim_candidate > in_dim_candidate / 2:
+                            print(f"警告: Layer {layer_idx} - router.weight 形状 {weight_shape} 不符合 router 特征（可能是 MLP 投影层），跳过")
+                            print(f"  跳过 Layer {layer_idx}（不是真正的 MoE router）")
+                            router = None
+                            continue
+                        
+                        input_dim = in_dim_candidate
+                        num_experts_found = out_dim_candidate
+                        router_dtype = router.weight.dtype
+                        print(f"  使用 router.weight: {input_dim} -> {num_experts_found}, dtype: {router_dtype}")
                 else:
                     print(f"警告: Layer {layer_idx} - router.weight 形状异常: {router.weight.shape}")
             
@@ -342,36 +409,36 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
             
             # 复制原始权重
             try:
+                # 确定要复制的权重来源
+                source_weight = None
                 if gate_layer is not None:
+                    source_weight = gate_layer.weight
+                elif hasattr(router, 'weight') and router.weight is not None:
+                    source_weight = router.weight
+                
+                if source_weight is not None:
                     with torch.no_grad():
-                        # 检查形状是否匹配
-                        gate_weight = gate_layer.weight
                         okr_weight = okr_router.gate_network.weight
                         
-                        if gate_weight.shape == okr_weight.shape:
+                        # 检查是否需要转置
+                        if source_weight.shape == okr_weight.shape:
                             # 形状匹配，直接复制
-                            if gate_weight.dtype != okr_weight.dtype:
-                                okr_weight.data = gate_weight.data.to(dtype=okr_weight.dtype)
+                            if source_weight.dtype != okr_weight.dtype:
+                                okr_weight.data = source_weight.data.to(dtype=okr_weight.dtype)
                             else:
-                                okr_weight.copy_(gate_weight)
-                            print(f"  ✓ Layer {layer_idx}: 已复制权重: {gate_weight.shape}, dtype: {gate_weight.dtype}")
-                            import logging
-                            logging.getLogger("okr_patch").info(f"Layer {layer_idx}: 权重复制成功: {gate_weight.shape}")
-                        elif gate_weight.shape == okr_weight.shape[::-1]:
-                            # 形状转置，需要转置后复制
-                            weight_t = gate_weight.T
+                                okr_weight.copy_(source_weight)
+                            print(f"  ✓ Layer {layer_idx}: 已复制权重: {source_weight.shape}, dtype: {source_weight.dtype}")
+                        elif source_weight.shape == okr_weight.shape[::-1]:
+                            # 形状转置，需要转置后复制（对于 MoEGate，权重可能是转置的）
+                            weight_t = source_weight.T
                             if weight_t.dtype != okr_weight.dtype:
                                 okr_weight.data = weight_t.data.to(dtype=okr_weight.dtype)
                             else:
                                 okr_weight.copy_(weight_t)
-                            print(f"  ✓ Layer {layer_idx}: 已复制并转置权重: {gate_weight.shape} -> {okr_weight.shape}")
-                            import logging
-                            logging.getLogger("okr_patch").info(f"Layer {layer_idx}: 权重转置复制成功: {gate_weight.shape} -> {okr_weight.shape}")
+                            print(f"  ✓ Layer {layer_idx}: 已复制并转置权重: {source_weight.shape} -> {okr_weight.shape}, dtype: {source_weight.dtype}")
                         else:
-                            print(f"  ✗ Layer {layer_idx}: 权重形状不匹配: {gate_weight.shape} vs {okr_weight.shape}")
-                            print(f"     使用随机初始化（水印可能无法正常工作）")
-                            import logging
-                            logging.getLogger("okr_patch").warning(f"Layer {layer_idx}: 权重形状不匹配，使用随机初始化")
+                            print(f"警告: Layer {layer_idx} - 权重形状不匹配: router {source_weight.shape} vs okr {okr_weight.shape}")
+                            print(f"  跳过权重复制，使用随机初始化（水印可能无法正常工作）")
                 elif hasattr(router, 'weight') and router.weight is not None:
                     with torch.no_grad():
                         # 检查形状是否匹配
@@ -415,6 +482,10 @@ def inject_okr(model: Union[AutoModelForCausalLM, AutoModelForSeq2SeqLM],
                 def okr_forward(hidden_states: torch.Tensor):
                     # 调用 OKR 核心逻辑
                     routing_weights, selected_experts = _okr_forward_core(okr_rt, hidden_states)
+                    
+                    # 确保 selected_experts 是 long 类型（再次确认，因为 scatter_ 等操作需要）
+                    if selected_experts.dtype != torch.long:
+                        selected_experts = selected_experts.long()
                     
                     # 精准区分 Encoder/Decoder：只记录 Decoder 的路由数据
                     # 如果这不是 decoder router，直接返回，不保存路由数据
@@ -615,6 +686,11 @@ def _okr_forward_core(router: OKRRouter, hidden_states: torch.Tensor):
     
     # 5. 选取Top-K
     _, selected_experts = torch.topk(modified_scores, router.top_k, dim=-1)
+    
+    # 确保 selected_experts 是整数类型（long），因为 bincount 等操作需要整数类型
+    # torch.topk 应该返回 long 类型，但为了安全起见，显式转换
+    if selected_experts.dtype != torch.long:
+        selected_experts = selected_experts.long()
     
     # 6. 计算权重（使用原始logits）
     router_logits = torch.gather(raw_logits, -1, selected_experts)

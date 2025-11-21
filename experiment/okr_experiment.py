@@ -161,11 +161,17 @@ class OKRExperimentFramework:
         logger.info(f"Secret Key: {self.config.watermark.secret_key[:20]}...")
         logger.info(f"Epsilon: {self.config.watermark.epsilon}")
         
-        watermarked_model = inject_okr(
-            model,
-            epsilon=self.config.watermark.epsilon,
-            secret_key=self.config.watermark.secret_key
-        )
+        # 使用配置对象注入 OKR，这样可以传递 num_experts 和 top_k
+        try:
+            from okr_patch import inject_okr_with_config
+            watermarked_model = inject_okr_with_config(model, self.config)
+        except ImportError:
+            # 如果 inject_okr_with_config 不存在，使用原来的方法
+            watermarked_model = inject_okr(
+                model,
+                epsilon=self.config.watermark.epsilon,
+                secret_key=self.config.watermark.secret_key
+            )
         
         logger.info("OKR 水印注入完成")
         return watermarked_model
@@ -260,11 +266,13 @@ class OKRBasicExperiment(OKRExperimentFramework):
             with torch.no_grad():
                 if is_decoder_only:
                     # decoder-only 模型（如 DeepSeek-MoE）
+                    # 添加 use_cache=False 以避免 DynamicCache.get_usable_length 兼容性问题
                     outputs = watermarked_model.generate(
                         **inputs,
                         max_length=self.config.experiment.max_length,
                         num_beams=1,
                         do_sample=False,
+                        use_cache=False,  # 禁用 cache 以避免兼容性问题
                         pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id
                     )
                 else:
@@ -275,6 +283,7 @@ class OKRBasicExperiment(OKRExperimentFramework):
                         max_length=self.config.experiment.max_length,
                         num_beams=1,
                         do_sample=False,
+                        use_cache=False,  # 禁用 cache 以避免兼容性问题
                         decoder_start_token_id=decoder_start_token_id,
                         pad_token_id=tokenizer.pad_token_id or tokenizer.eos_token_id
                     )
@@ -468,7 +477,8 @@ class OKRRobustnessExperiment(OKRExperimentFramework):
                     **inputs,
                     max_length=self.config.experiment.max_length,
                     num_beams=1,
-                    do_sample=False
+                    do_sample=False,
+                    use_cache=False  # 禁用 cache 以避免兼容性问题
                 )
             
             generated_text = tokenizer.decode(outputs[0], skip_special_tokens=True)
